@@ -3,6 +3,10 @@
     Pixel-perfect reproduction of VodkaHub UI
 ]]
 
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -10,8 +14,8 @@ local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local Workspace = game:GetService("Workspace")
 
-local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait() or Players.LocalPlayer
+local Camera = Workspace.CurrentCamera or Workspace:WaitForChild("Camera", 5) or Workspace.CurrentCamera
 
 -- Clean up any existing instances
 if _G.VodkaHubCleanup and type(_G.VodkaHubCleanup) == "function" then
@@ -244,6 +248,7 @@ MainFrame.Position = UDim2.new(0.5, -360, 0.5, -250)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = false
+MainFrame.Visible = false
 MainFrame.Parent = ScreenGui
 
 local mainCorner = Instance.new("UICorner")
@@ -254,6 +259,100 @@ local mainStroke = Instance.new("UIStroke")
 mainStroke.Thickness = 1.2
 mainStroke.Color = Color3.fromRGB(32, 32, 38)
 mainStroke.Parent = MainFrame
+
+-- Loading Splash Notification
+local LoadFrame = Instance.new("Frame")
+LoadFrame.Name = "VodkaLoading"
+LoadFrame.Size = UDim2.new(0, 320, 0, 85)
+LoadFrame.Position = UDim2.new(0.5, -160, 0.45, -42)
+LoadFrame.BackgroundColor3 = Color3.fromRGB(16, 16, 20)
+LoadFrame.BorderSizePixel = 0
+LoadFrame.ZIndex = 100
+LoadFrame.Parent = ScreenGui
+
+local loadCorner = Instance.new("UICorner")
+loadCorner.CornerRadius = UDim.new(0, 8)
+loadCorner.Parent = LoadFrame
+
+local loadStroke = Instance.new("UIStroke")
+loadStroke.Thickness = 1.2
+loadStroke.Color = Color3.fromRGB(123, 97, 255)
+loadStroke.Parent = LoadFrame
+
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Size = UDim2.new(1, -20, 0, 22)
+titleLbl.Position = UDim2.new(0, 14, 0, 10)
+titleLbl.BackgroundTransparency = 1
+titleLbl.Font = Enum.Font.GothamBold
+titleLbl.Text = "VodkaHub • Initializing Suite"
+titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLbl.TextSize = 14
+titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+titleLbl.ZIndex = 101
+titleLbl.Parent = LoadFrame
+
+local statusLbl = Instance.new("TextLabel")
+statusLbl.Size = UDim2.new(1, -20, 0, 18)
+statusLbl.Position = UDim2.new(0, 14, 0, 34)
+statusLbl.BackgroundTransparency = 1
+statusLbl.Font = Enum.Font.GothamMedium
+statusLbl.Text = "Synchronizing combat suite..."
+statusLbl.TextColor3 = Color3.fromRGB(160, 160, 180)
+statusLbl.TextSize = 11
+statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+statusLbl.ZIndex = 101
+statusLbl.Parent = LoadFrame
+
+local barBg = Instance.new("Frame")
+barBg.Size = UDim2.new(1, -28, 0, 5)
+barBg.Position = UDim2.new(0, 14, 0, 60)
+barBg.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+barBg.BorderSizePixel = 0
+barBg.ZIndex = 101
+barBg.Parent = LoadFrame
+
+local barBgCorner = Instance.new("UICorner")
+barBgCorner.CornerRadius = UDim.new(1, 0)
+barBgCorner.Parent = barBg
+
+local barFill = Instance.new("Frame")
+barFill.Size = UDim2.new(0, 0, 1, 0)
+barFill.BackgroundColor3 = Color3.fromRGB(123, 97, 255)
+barFill.BorderSizePixel = 0
+barFill.ZIndex = 102
+barFill.Parent = barBg
+
+local barFillCorner = Instance.new("UICorner")
+barFillCorner.CornerRadius = UDim.new(1, 0)
+barFillCorner.Parent = barFill
+
+task.spawn(function()
+    statusLbl.Text = "Verifying game services & character..."
+    TweenService:Create(barFill, TweenInfo.new(0.6, Enum.EasingStyle.Quad), { Size = UDim2.new(0.35, 0, 1, 0) }):Play()
+    task.wait(0.6)
+
+    statusLbl.Text = "Initializing Drawing engine & ESP structures..."
+    TweenService:Create(barFill, TweenInfo.new(0.7, Enum.EasingStyle.Quad), { Size = UDim2.new(0.75, 0, 1, 0) }):Play()
+    task.wait(0.7)
+
+    statusLbl.Text = "Stabilizing combat hooks & visual caches..."
+    TweenService:Create(barFill, TweenInfo.new(0.6, Enum.EasingStyle.Quad), { Size = UDim2.new(1, 0, 1, 0) }):Play()
+    task.wait(0.6)
+
+    statusLbl.Text = "Loaded successfully!"
+    task.wait(0.25)
+
+    TweenService:Create(LoadFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), { BackgroundTransparency = 1 }):Play()
+    TweenService:Create(titleLbl, TweenInfo.new(0.3, Enum.EasingStyle.Quad), { TextTransparency = 1 }):Play()
+    TweenService:Create(statusLbl, TweenInfo.new(0.3, Enum.EasingStyle.Quad), { TextTransparency = 1 }):Play()
+    TweenService:Create(barBg, TweenInfo.new(0.3, Enum.EasingStyle.Quad), { BackgroundTransparency = 1 }):Play()
+    TweenService:Create(barFill, TweenInfo.new(0.3, Enum.EasingStyle.Quad), { BackgroundTransparency = 1 }):Play()
+    TweenService:Create(loadStroke, TweenInfo.new(0.3, Enum.EasingStyle.Quad), { Transparency = 1 }):Play()
+    task.wait(0.3)
+    pcall(function() LoadFrame:Destroy() end)
+
+    MainFrame.Visible = true
+end)
 
 ---------------------------------------------------------------------
 -- TOP BAR (Header)
