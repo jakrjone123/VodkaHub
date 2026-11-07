@@ -6,6 +6,14 @@
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
+pcall(function()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "VodkaHub",
+        Text = "Iniciando sistemas y cargando funciones...",
+        Duration = 3,
+    })
+end)
+task.wait(2)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -28,60 +36,64 @@ local S = {
     Aimbot = {
         Enabled = false,
         Key = Enum.UserInputType.MouseButton2,
-        Mode = "Hold", -- "Hold", "Target", "Always"
-        Type = "Camera", -- "Camera", "Mouse"
+        Mode = "Hold", -- "Hold", "Toggle", "Target", "Always"
+        Type = "Mouse", -- "Mouse" (recommended, smooth & native) or "Camera"
         TargetPart = "Head", -- "Head", "UpperTorso", "HumanoidRootPart", "Closest", "Random"
         StickyAim = false,
         HealthCheck = true,
         TeamCheck = false,
         WallCheck = false,
         FOVCircle = false,
-        LockFOVToCenter = false,
+        LockFOVToCenter = true,
         MaxDistance = 1500,
-        FOVRadius = 100,
-        Smoothness = 0.15,
+        FOVRadius = 120,
+        Smoothness = 0.20,
+        Prediction = false,
+        PredictionAmount = 0.05,
     },
 
     -- Section 2: SILENT AIM (Independent)
     SilentAim = {
         Enabled = false,
         Key = Enum.UserInputType.MouseButton2,
-        Mode = "Hold", -- "Hold", "Always", "Toggle"
+        Mode = "Always", -- "Always", "Hold", "Toggle"
         TargetPart = "Head", -- "Head", "UpperTorso", "HumanoidRootPart", "Closest", "Random"
         StickyAim = false,
         HealthCheck = true,
         TeamCheck = false,
         WallCheck = false,
         FOVCircle = false,
-        LockFOVToCenter = false,
+        LockFOVToCenter = true,
         MaxDistance = 1500,
-        FOVRadius = 120,
+        FOVRadius = 140,
         HitChance = 100,
+        Prediction = false,
+        PredictionAmount = 0.05,
     },
 
-    -- Section 3: TRIGGERBOT (New Category)
+    -- Section 3: TRIGGERBOT (Independent)
     TriggerBot = {
         Enabled = false,
         Key = Enum.KeyCode.F,
+        Mode = "Always", -- "Always", "Hold", "Toggle"
         VisibleCheck = true,
-        TeamCheck = true,
-        Delay = 25,
-        MaxDistance = 1000,
+        TeamCheck = false,
+        Delay = 0,
+        MaxDistance = 1200,
     },
 
     -- Section 4: AIMBOT TARGET / HITBOX (Independent)
     AimbotTarget = {
         HitboxExpander = false,
-        TargetPart = "HitboxHead",
+        TargetPart = "HitboxHead", -- "HitboxHead", "HitboxBody", "All (Head + Body)", "HumanoidRootPart", "Head"
         TeamCheck = false,
         WallCheck = false,
         FOVCircle = false,
-        LockFOVToCenter = false,
+        LockFOVToCenter = true,
         FOVRadius = 150,
-        HitboxSize = 10,
-        HitboxTransparency = 0.4,
+        HitboxSize = 12,
+        HitboxTransparency = 0.5,
     },
-
     -- Visuals: Main ESP Settings
     ESP = {
         Enabled = false,
@@ -191,6 +203,8 @@ local S = {
     Visible = true
 }
 _G.VodkaState = S
+pcall(function() if shared then shared.VodkaState = S end end)
+pcall(function() if getgenv and type(getgenv) == "function" then getgenv().VodkaState = S end end)
 
 -- Independent Drawing API FOV Circles
 local aimbotFovDrawing = nil
@@ -1702,13 +1716,13 @@ end, function(newKey)
     S.Aimbot.Key = newKey
 end, 1)
 
-createDropdown(cAimbotTabs["Aimbot"], "Aimbot Mode", { "Hold", "Target", "Always" }, S.Aimbot.Mode, function(v)
+createDropdown(cAimbotTabs["Aimbot"], "Aimbot Mode", { "Hold", "Toggle", "Always", "Target" }, S.Aimbot.Mode, function(v)
     S.Aimbot.Mode = v
     currentLockedTarget = nil
     currentLockedPart = nil
 end, 2)
 
-createDropdown(cAimbotTabs["Aimbot"], "Aimbot Type", { "Camera", "Mouse" }, S.Aimbot.Type, function(v)
+createDropdown(cAimbotTabs["Aimbot"], "Aimbot Type", { "Mouse", "Camera" }, S.Aimbot.Type, function(v)
     S.Aimbot.Type = v
 end, 3)
 
@@ -1720,11 +1734,12 @@ createSwitch(cAimbotTabs["Aimbot"], "Sticky Aim", S.Aimbot.StickyAim, function(v
 createSwitch(cAimbotTabs["Aimbot"], "Health Check", S.Aimbot.HealthCheck, function(v) S.Aimbot.HealthCheck = v end, 6)
 createSwitch(cAimbotTabs["Aimbot"], "Team Check", S.Aimbot.TeamCheck, function(v) S.Aimbot.TeamCheck = v end, 7)
 createSwitch(cAimbotTabs["Aimbot"], "Wall Check", S.Aimbot.WallCheck, function(v) S.Aimbot.WallCheck = v end, 8)
-createSlider(cAimbotTabs["Aimbot"], "Max Distance", 50, 2500, S.Aimbot.MaxDistance, false, function(v) S.Aimbot.MaxDistance = v end, 9)
+createSlider(cAimbotTabs["Aimbot"], "Max Distance", 50, 3000, S.Aimbot.MaxDistance, false, function(v) S.Aimbot.MaxDistance = v end, 9)
 
 -- Subtab: Prediction
-createSlider(cAimbotTabs["Prediction"], "Hit Chance", 1, 100, S.SilentAim.HitChance or 100, false, function(v) S.SilentAim.HitChance = v end, 1)
-createSlider(cAimbotTabs["Prediction"], "Max Distance", 50, 2500, S.Aimbot.MaxDistance, false, function(v) S.Aimbot.MaxDistance = v end, 2)
+createSwitch(cAimbotTabs["Prediction"], "Movement Prediction", S.Aimbot.Prediction, function(v) S.Aimbot.Prediction = v end, 1)
+createSlider(cAimbotTabs["Prediction"], "Prediction Amount", 0, 0.25, S.Aimbot.PredictionAmount, true, function(v) S.Aimbot.PredictionAmount = v end, 2)
+createSlider(cAimbotTabs["Prediction"], "Max Distance", 50, 3000, S.Aimbot.MaxDistance, false, function(v) S.Aimbot.MaxDistance = v end, 3)
 
 -- Subtab: Smoothness
 createSlider(cAimbotTabs["Smoothness"], "Smoothness", 0, 1, S.Aimbot.Smoothness, true, function(v) S.Aimbot.Smoothness = v end, 1)
@@ -1735,7 +1750,7 @@ createSwitch(cAimbotTabs["FOV"], "FOV Circle", S.Aimbot.FOVCircle, function(v)
     if aimbotFovDrawing then aimbotFovDrawing.Visible = v end
 end, 1)
 createSwitch(cAimbotTabs["FOV"], "Lock FOV To Center", S.Aimbot.LockFOVToCenter, function(v) S.Aimbot.LockFOVToCenter = v end, 2)
-createSlider(cAimbotTabs["FOV"], "FOV Radius", 30, 400, S.Aimbot.FOVRadius, false, function(v)
+createSlider(cAimbotTabs["FOV"], "FOV Radius", 30, 500, S.Aimbot.FOVRadius, false, function(v)
     S.Aimbot.FOVRadius = v
     if aimbotFovDrawing then aimbotFovDrawing.Radius = v end
 end, 3)
@@ -1751,6 +1766,7 @@ createSwitch(cAimbotTarget, "Hitbox Expander", S.AimbotTarget.HitboxExpander, fu
                     part.Size = orig.Size
                     part.Transparency = orig.Transparency
                     part.CanCollide = orig.CanCollide
+                    part.Massless = orig.Massless
                 end)
             end
         end
@@ -1758,7 +1774,7 @@ createSwitch(cAimbotTarget, "Hitbox Expander", S.AimbotTarget.HitboxExpander, fu
     end
 end, 1)
 
-createDropdown(cAimbotTarget, "Look (Target Part)", { "HitboxHead", "Head", "HumanoidRootPart", "All" }, S.AimbotTarget.TargetPart, function(v)
+createDropdown(cAimbotTarget, "Look (Target Part)", { "HitboxHead", "HitboxBody", "All (Head + Body)", "HumanoidRootPart", "Head" }, S.AimbotTarget.TargetPart, function(v)
     S.AimbotTarget.TargetPart = v
 end, 2)
 
@@ -1769,7 +1785,7 @@ createSwitch(cAimbotTarget, "FOV Circle", S.AimbotTarget.FOVCircle, function(v)
     if targetFovDrawing then targetFovDrawing.Visible = v end
 end, 5)
 createSwitch(cAimbotTarget, "Lock FOV To Center", S.AimbotTarget.LockFOVToCenter, function(v) S.AimbotTarget.LockFOVToCenter = v end, 6)
-createSlider(cAimbotTarget, "FOV Radius", 30, 400, S.AimbotTarget.FOVRadius, false, function(v)
+createSlider(cAimbotTarget, "FOV Radius", 30, 500, S.AimbotTarget.FOVRadius, false, function(v)
     S.AimbotTarget.FOVRadius = v
     if targetFovDrawing then targetFovDrawing.Radius = v end
 end, 7)
@@ -1787,7 +1803,7 @@ end, function(newKey)
     S.SilentAim.Key = newKey
 end, 1)
 
-createDropdown(cSilentTabs["Silent Aim"], "Silent Aim Mode", { "Hold", "Always", "Toggle" }, S.SilentAim.Mode, function(v)
+createDropdown(cSilentTabs["Silent Aim"], "Silent Aim Mode", { "Always", "Hold", "Toggle" }, S.SilentAim.Mode, function(v)
     S.SilentAim.Mode = v
 end, 2)
 
@@ -1802,7 +1818,9 @@ createSwitch(cSilentTabs["Silent Aim"], "Wall Check", S.SilentAim.WallCheck, fun
 createSlider(cSilentTabs["Silent Aim"], "Hit Chance", 1, 100, S.SilentAim.HitChance, false, function(v) S.SilentAim.HitChance = v end, 8)
 
 -- Subtab: Prediction
-createSlider(cSilentTabs["Prediction"], "Max Distance", 50, 2500, S.SilentAim.MaxDistance, false, function(v) S.SilentAim.MaxDistance = v end, 1)
+createSwitch(cSilentTabs["Prediction"], "Movement Prediction", S.SilentAim.Prediction, function(v) S.SilentAim.Prediction = v end, 1)
+createSlider(cSilentTabs["Prediction"], "Prediction Amount", 0, 0.25, S.SilentAim.PredictionAmount, true, function(v) S.SilentAim.PredictionAmount = v end, 2)
+createSlider(cSilentTabs["Prediction"], "Max Distance", 50, 3000, S.SilentAim.MaxDistance, false, function(v) S.SilentAim.MaxDistance = v end, 3)
 
 -- Subtab: FOV
 createSwitch(cSilentTabs["FOV"], "FOV Circle", S.SilentAim.FOVCircle, function(v)
@@ -1810,7 +1828,7 @@ createSwitch(cSilentTabs["FOV"], "FOV Circle", S.SilentAim.FOVCircle, function(v
     if silentFovDrawing then silentFovDrawing.Visible = v end
 end, 1)
 createSwitch(cSilentTabs["FOV"], "Lock FOV To Center", S.SilentAim.LockFOVToCenter, function(v) S.SilentAim.LockFOVToCenter = v end, 2)
-createSlider(cSilentTabs["FOV"], "FOV Radius", 30, 400, S.SilentAim.FOVRadius, false, function(v)
+createSlider(cSilentTabs["FOV"], "FOV Radius", 30, 500, S.SilentAim.FOVRadius, false, function(v)
     S.SilentAim.FOVRadius = v
     if silentFovDrawing then silentFovDrawing.Radius = v end
 end, 3)
@@ -1823,11 +1841,14 @@ end, function(newKey)
     S.TriggerBot.Key = newKey
 end, 1)
 
-createSwitch(cTrigger, "Visible Check", S.TriggerBot.VisibleCheck, function(v) S.TriggerBot.VisibleCheck = v end, 2)
-createSwitch(cTrigger, "Team Check", S.TriggerBot.TeamCheck, function(v) S.TriggerBot.TeamCheck = v end, 3)
-createSlider(cTrigger, "Trigger Delay (ms)", 0, 300, S.TriggerBot.Delay, false, function(v) S.TriggerBot.Delay = v end, 4)
-createSlider(cTrigger, "Max Distance", 50, 2500, S.TriggerBot.MaxDistance, false, function(v) S.TriggerBot.MaxDistance = v end, 5)
+createDropdown(cTrigger, "Trigger Mode", { "Always", "Hold", "Toggle" }, S.TriggerBot.Mode, function(v)
+    S.TriggerBot.Mode = v
+end, 2)
 
+createSwitch(cTrigger, "Visible Check", S.TriggerBot.VisibleCheck, function(v) S.TriggerBot.VisibleCheck = v end, 3)
+createSwitch(cTrigger, "Team Check", S.TriggerBot.TeamCheck, function(v) S.TriggerBot.TeamCheck = v end, 4)
+createSlider(cTrigger, "Trigger Delay (ms)", 0, 300, S.TriggerBot.Delay, false, function(v) S.TriggerBot.Delay = v end, 5)
+createSlider(cTrigger, "Max Distance", 50, 2500, S.TriggerBot.MaxDistance, false, function(v) S.TriggerBot.MaxDistance = v end, 6)
 -- TAB 2: VISUALS (ESP Engine Divided into Categories)
 local pVisuals = createSidebarTab("Visuals", "rbxassetid://6031075931", 2)
 
@@ -2282,11 +2303,21 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 end)
 
 ---------------------------------------------------------------------
--- COMBAT & GAMEPLAY LOGIC (AIMBOT, SILENT AIM, AIMBOT TARGET)
+-- COMBAT & GAMEPLAY LOGIC (AIMBOT, SILENT AIM, TRIGGERBOT, HITBOX)
 ---------------------------------------------------------------------
 local isHoldingKey = false
+local isAimbotToggleActive = false
 local currentLockedTarget = nil
 local currentLockedPart = nil
+
+local isSilentHoldingKey = false
+local isSilentToggleActive = true
+
+local isTriggerHolding = false
+local isTriggerToggleActive = false
+local isTriggerFiring = false
+
+local GuiService = game:GetService("GuiService")
 
 local function isInputMatchingBind(input, boundKey)
     if not boundKey then return false end
@@ -2295,6 +2326,12 @@ local function isInputMatchingBind(input, boundKey)
             return input.KeyCode == Enum.KeyCode.MouseBackButton
         elseif boundKey == "MB5" then
             return input.KeyCode == Enum.KeyCode.MouseBackButton
+        elseif boundKey == "LMB" or boundKey == "MouseButton1" then
+            return input.UserInputType == Enum.UserInputType.MouseButton1
+        elseif boundKey == "RMB" or boundKey == "MouseButton2" then
+            return input.UserInputType == Enum.UserInputType.MouseButton2
+        elseif boundKey == "MMB" or boundKey == "MouseButton3" then
+            return input.UserInputType == Enum.UserInputType.MouseButton3
         elseif input.KeyCode and input.KeyCode.Name == boundKey then
             return true
         end
@@ -2310,41 +2347,60 @@ local function isInputMatchingBind(input, boundKey)
     return false
 end
 
-local GuiService = game:GetService("GuiService")
-
 -- Viewport center calculation depending on LockFOVToCenter
 local function getViewportCenter(lockToCenter)
+    local vp = Camera.ViewportSize
     if lockToCenter or UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-        return Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        return Vector2.new(vp.X / 2, vp.Y / 2)
     else
         local mouse = UserInputService:GetMouseLocation()
-        local inset, _ = GuiService:GetGuiInset()
-        return Vector2.new(mouse.X, mouse.Y - inset.Y)
+        return Vector2.new(mouse.X, mouse.Y)
     end
 end
 
 -- Screen Drawing center calculation
 local function getDrawingCenter(lockToCenter)
+    local vp = Camera.ViewportSize
     if lockToCenter or UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-        return Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        return Vector2.new(vp.X / 2, vp.Y / 2)
     else
         return UserInputService:GetMouseLocation()
     end
 end
 
--- Helper: resolve target part for a character with support for Closest and Random
+-- Helper: resolve target part for a character with support for Closest, Random, HitboxHead, HitboxBody
 local function getTargetPartForChar(char, preference, fromPos)
     if not char then return nil end
+    preference = preference or "Head"
+
     if preference == "Head" then
-        return char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
-    elseif preference == "UpperTorso" then
-        return char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart")
+        return char:FindFirstChild("HitboxHead") 
+            or char:FindFirstChild("PhysicalHitboxHead") 
+            or char:FindFirstChild("Head") 
+            or char:FindFirstChild("HumanoidRootPart")
+    elseif preference == "UpperTorso" or preference == "Body" then
+        return char:FindFirstChild("HitboxBody") 
+            or char:FindFirstChild("HitboxBodySmall") 
+            or char:FindFirstChild("UpperTorso") 
+            or char:FindFirstChild("Torso") 
+            or char:FindFirstChild("HumanoidRootPart")
     elseif preference == "HumanoidRootPart" then
-        return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")
+        return char:FindFirstChild("HumanoidRootPart") 
+            or char:FindFirstChild("HitboxBody") 
+            or char:FindFirstChild("Head")
+    elseif preference == "HitboxHead" then
+        return char:FindFirstChild("HitboxHead") 
+            or char:FindFirstChild("PhysicalHitboxHead") 
+            or char:FindFirstChild("Head")
+    elseif preference == "HitboxBody" then
+        return char:FindFirstChild("HitboxBody") 
+            or char:FindFirstChild("HitboxBodySmall") 
+            or char:FindFirstChild("UpperTorso") 
+            or char:FindFirstChild("HumanoidRootPart")
     elseif preference == "Random" then
         local parts = {
             char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head"),
-            char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"),
+            char:FindFirstChild("HitboxBody") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"),
             char:FindFirstChild("HumanoidRootPart")
         }
         local valid = {}
@@ -2352,11 +2408,11 @@ local function getTargetPartForChar(char, preference, fromPos)
         if #valid > 0 then
             return valid[math.random(1, #valid)]
         end
-        return char:FindFirstChild("Head")
+        return char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
     elseif preference == "Closest" then
         local parts = {
             char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head"),
-            char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"),
+            char:FindFirstChild("HitboxBody") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"),
             char:FindFirstChild("HumanoidRootPart")
         }
         local bestP = nil
@@ -2371,9 +2427,9 @@ local function getTargetPartForChar(char, preference, fromPos)
                 end
             end
         end
-        return bestP or char:FindFirstChild("Head")
+        return bestP or char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head")
     end
-    return char:FindFirstChild(preference) or char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+    return char:FindFirstChild(preference) or char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
 end
 
 -- Helper: check if player is teammate
@@ -2385,17 +2441,54 @@ local function isTeammate(p)
     return false
 end
 
--- Helper: check line of sight between camera and target part
+-- Helper: check line of sight between camera and target part with multi-pierce for transparent barriers
 local function checkWallVisibility(char, part)
     if not part then return false end
-    local rayParams = RaycastParams.new()
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = { LocalPlayer.Character, char }
-    rayParams.IgnoreWater = true
     local origin = Camera.CFrame.Position
     local dir = part.Position - origin
-    local result = Workspace:Raycast(origin, dir, rayParams)
-    return result == nil
+    local dist = dir.Magnitude
+    if dist < 0.5 then return true end
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    local ignoreList = { LocalPlayer.Character, char }
+    rayParams.FilterDescendantsInstances = ignoreList
+    rayParams.IgnoreWater = true
+
+    local currentOrigin = origin
+    local remainingDir = dir
+    for i = 1, 4 do
+        local result = Workspace:Raycast(currentOrigin, remainingDir, rayParams)
+        if not result then
+            return true
+        end
+
+        local hit = result.Instance
+        if hit:IsDescendantOf(char) or hit == part then
+            return true
+        end
+
+        local nameLower = hit.Name:lower()
+        local canPierce = (hit.Transparency >= 0.75)
+            or (not hit.CanCollide and hit.Transparency > 0)
+            or hit:IsA("Accessory")
+            or nameLower:find("barrier")
+            or nameLower:find("clip")
+            or nameLower:find("trigger")
+
+        if canPierce then
+            table.insert(ignoreList, hit)
+            rayParams.FilterDescendantsInstances = ignoreList
+            currentOrigin = result.Position + (remainingDir.Unit * 0.15)
+            remainingDir = part.Position - currentOrigin
+            if remainingDir.Magnitude < 0.5 then
+                return true
+            end
+        else
+            return false
+        end
+    end
+    return false
 end
 
 -- Sticky Aim storage
@@ -2562,9 +2655,11 @@ end
 -- Key Input Listeners for Aimbot
 UserInputService.InputBegan:Connect(function(input, gpe)
     if isInputMatchingBind(input, S.Aimbot.Key) then
-        isHoldingKey = true
-
-        if S.Aimbot.Enabled and S.Aimbot.Mode == "Target" then
+        if S.Aimbot.Mode == "Hold" then
+            isHoldingKey = true
+        elseif S.Aimbot.Mode == "Toggle" then
+            isAimbotToggleActive = not isAimbotToggleActive
+        elseif S.Aimbot.Mode == "Target" then
             if currentLockedTarget then
                 currentLockedTarget = nil
                 currentLockedPart = nil
@@ -2577,14 +2672,13 @@ end)
 
 UserInputService.InputEnded:Connect(function(input, gpe)
     if isInputMatchingBind(input, S.Aimbot.Key) then
-        isHoldingKey = false
+        if S.Aimbot.Mode == "Hold" then
+            isHoldingKey = false
+        end
     end
 end)
 
 -- Key Input Listeners for Silent Aim
-local isSilentHoldingKey = false
-local isSilentToggleActive = true
-
 UserInputService.InputBegan:Connect(function(input, gpe)
     if isInputMatchingBind(input, S.SilentAim.Key) then
         isSilentHoldingKey = true
@@ -2600,6 +2694,25 @@ UserInputService.InputEnded:Connect(function(input, gpe)
     end
 end)
 
+-- Key Input Listeners for TriggerBot
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if isInputMatchingBind(input, S.TriggerBot.Key) then
+        if S.TriggerBot.Mode == "Hold" then
+            isTriggerHolding = true
+        elseif S.TriggerBot.Mode == "Toggle" then
+            isTriggerToggleActive = not isTriggerToggleActive
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gpe)
+    if isInputMatchingBind(input, S.TriggerBot.Key) then
+        if S.TriggerBot.Mode == "Hold" then
+            isTriggerHolding = false
+        end
+    end
+end)
+
 -- Key Input Listener for Master ESP
 UserInputService.InputBegan:Connect(function(input, gpe)
     if not gpe and S.ESP.Key and isInputMatchingBind(input, S.ESP.Key) then
@@ -2612,6 +2725,20 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
+local function isAimbotActive()
+    if not S.Aimbot.Enabled then return false end
+    if S.Aimbot.Mode == "Always" then
+        return true
+    elseif S.Aimbot.Mode == "Hold" then
+        return isHoldingKey
+    elseif S.Aimbot.Mode == "Toggle" then
+        return isAimbotToggleActive
+    elseif S.Aimbot.Mode == "Target" then
+        return currentLockedTarget ~= nil
+    end
+    return false
+end
+
 local function isSilentAimActive()
     if not S.SilentAim.Enabled then return false end
     if S.SilentAim.Mode == "Hold" then
@@ -2621,6 +2748,18 @@ local function isSilentAimActive()
     else -- "Always"
         return true
     end
+end
+
+local function isTriggerActive()
+    if not S.TriggerBot.Enabled then return false end
+    if S.TriggerBot.Mode == "Always" then
+        return true
+    elseif S.TriggerBot.Mode == "Hold" then
+        return isTriggerHolding
+    elseif S.TriggerBot.Mode == "Toggle" then
+        return isTriggerToggleActive
+    end
+    return false
 end
 
 -- Render loop: Aimbot + Independent FOV Circles
@@ -2659,18 +2798,12 @@ RunService.RenderStepped:Connect(function()
     end
 
     -- Aimbot Execution
-    if S.Aimbot.Enabled then
+    if isAimbotActive() then
         local targetChar = nil
         local targetPart = nil
         local fovCenter = getViewportCenter(S.Aimbot.LockFOVToCenter)
 
-        if S.Aimbot.Mode == "Always" then
-            targetChar, targetPart = getClosestAimbotTarget()
-        elseif S.Aimbot.Mode == "Hold" then
-            if isHoldingKey then
-                targetChar, targetPart = getClosestAimbotTarget()
-            end
-        elseif S.Aimbot.Mode == "Target" then
+        if S.Aimbot.Mode == "Target" then
             if currentLockedTarget and currentLockedPart then
                 local hum = currentLockedTarget:FindFirstChildOfClass("Humanoid")
                 local isAlive = hum and hum.Health > 0
@@ -2682,7 +2815,7 @@ RunService.RenderStepped:Connect(function()
                         local screenVec = Vector2.new(screenPos.X, screenPos.Y)
                         local dist = (screenVec - fovCenter).Magnitude
 
-                        if dist <= S.Aimbot.FOVRadius then
+                        if dist <= S.Aimbot.FOVRadius * 1.5 then
                             local passWall = true
                             if S.Aimbot.WallCheck then
                                 passWall = checkWallVisibility(currentLockedTarget, currentLockedPart)
@@ -2708,24 +2841,37 @@ RunService.RenderStepped:Connect(function()
                     currentLockedPart = nil
                 end
             end
+        else
+            targetChar, targetPart = getClosestAimbotTarget()
         end
 
         if targetPart then
             local targetPos = targetPart.Position
-            local alpha = math.clamp(1 - S.Aimbot.Smoothness, 0.05, 0.95)
-            if S.Aimbot.Smoothness <= 0.05 then alpha = 1 end
+            -- Movement Prediction
+            if S.Aimbot.Prediction then
+                local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
+                if vel and typeof(vel) == "Vector3" then
+                    targetPos = targetPos + (vel * (S.Aimbot.PredictionAmount or 0.05))
+                end
+            end
+
+            local alpha = math.clamp(1 - S.Aimbot.Smoothness, 0.05, 1.0)
+            if S.Aimbot.Smoothness <= 0.04 then alpha = 1.0 end
 
             if S.Aimbot.Type == "Mouse" and mousemoverel then
                 local screenPos, onScreen = Camera:WorldToViewportPoint(targetPos)
-                if onScreen then
-                    local mousePos = UserInputService:GetMouseLocation()
-                    local deltaX = (screenPos.X - mousePos.X) * alpha
-                    local deltaY = (screenPos.Y - mousePos.Y) * alpha
-                    mousemoverel(deltaX, deltaY)
+                if onScreen and screenPos.Z > 0 then
+                    local crosshair = getViewportCenter(S.Aimbot.LockFOVToCenter)
+                    local deltaX = (screenPos.X - crosshair.X) * alpha
+                    local deltaY = (screenPos.Y - crosshair.Y) * alpha
+
+                    if math.abs(deltaX) > 0.4 or math.abs(deltaY) > 0.4 then
+                        mousemoverel(deltaX, deltaY)
+                    end
                 end
             else
                 local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, targetPos)
-                if S.Aimbot.Smoothness <= 0.05 then
+                if S.Aimbot.Smoothness <= 0.04 then
                     Camera.CFrame = targetCFrame
                 else
                     Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, alpha)
@@ -2741,42 +2887,26 @@ end)
 ---------------------------------------------------------------------
 -- TRIGGERBOT ENGINE
 ---------------------------------------------------------------------
-local isTriggerHolding = false
-local isTriggerFiring = false
-
 local function fireTriggerBot()
-    if mouse1click then
-        mouse1click()
-    elseif mouse1press and mouse1release then
+    if mouse1press and mouse1release then
         mouse1press()
-        task.wait(0.02)
+        task.wait(0.03)
         mouse1release()
+    elseif mouse1click then
+        mouse1click()
     else
         local vim = game:GetService("VirtualInputManager")
         local mousePos = UserInputService:GetMouseLocation()
         vim:SendMouseButtonEvent(mousePos.X, mousePos.Y, 0, true, game, 0)
-        task.wait(0.02)
+        task.wait(0.03)
         vim:SendMouseButtonEvent(mousePos.X, mousePos.Y, 0, false, game, 0)
     end
 end
 
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if isInputMatchingBind(input, S.TriggerBot.Key) then
-        isTriggerHolding = true
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input, gpe)
-    if isInputMatchingBind(input, S.TriggerBot.Key) then
-        isTriggerHolding = false
-    end
-end)
-
 RunService.Heartbeat:Connect(function()
-    if not S.TriggerBot.Enabled then return end
+    if not isTriggerActive() then return end
     if isTriggerFiring then return end
 
-    -- Raycast directly through the camera center
     local origin = Camera.CFrame.Position
     local direction = Camera.CFrame.LookVector * S.TriggerBot.MaxDistance
     local rayParams = RaycastParams.new()
@@ -2799,10 +2929,10 @@ RunService.Heartbeat:Connect(function()
                         if S.TriggerBot.Delay > 0 then
                             task.wait(S.TriggerBot.Delay / 1000)
                         end
-                        if S.TriggerBot.Enabled then
+                        if isTriggerActive() then
                             fireTriggerBot()
                         end
-                        task.wait(0.05)
+                        task.wait(0.06)
                         isTriggerFiring = false
                     end)
                 end
@@ -2812,7 +2942,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 ---------------------------------------------------------------------
--- SILENT AIM HOOKS (Independent)
+-- SILENT AIM HOOKS (Independent & Multi-Vector Redirection)
 ---------------------------------------------------------------------
 pcall(function()
     local oldRaycast
@@ -2822,11 +2952,19 @@ pcall(function()
             if chance >= 100 or math.random(1, 100) <= chance then
                 local _, targetPart = getClosestSilentAimTarget()
                 if targetPart and typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+                    local targetPos = targetPart.Position
+                    if S.SilentAim.Prediction then
+                        local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
+                        if vel and typeof(vel) == "Vector3" then
+                            targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
+                        end
+                    end
+
                     local camPos = Camera.CFrame.Position
-                    if (origin - camPos).Magnitude < 40 then
+                    if (origin - camPos).Magnitude < 50 then
                         local mag = direction.Magnitude
                         if mag < 1 then mag = 1000 end
-                        local newDir = (targetPart.Position - origin).Unit * mag
+                        local newDir = (targetPos - origin).Unit * mag
                         return oldRaycast(self, origin, newDir, rayParams)
                     end
                 end
@@ -2842,17 +2980,25 @@ pcall(function()
 
         if isSilentAimActive() and not checkcaller() then
             local chance = S.SilentAim.HitChance or 100
-            if method == "Raycast" and self == Workspace then
+            if (method == "Raycast" or method == "raycast") and self == Workspace then
                 if chance >= 100 or math.random(1, 100) <= chance then
                     local origin = args[1]
                     local direction = args[2]
                     local _, targetPart = getClosestSilentAimTarget()
                     if targetPart and typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+                        local targetPos = targetPart.Position
+                        if S.SilentAim.Prediction then
+                            local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
+                            if vel and typeof(vel) == "Vector3" then
+                                targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
+                            end
+                        end
+
                         local camPos = Camera.CFrame.Position
-                        if (origin - camPos).Magnitude < 40 then
+                        if (origin - camPos).Magnitude < 50 then
                             local mag = direction.Magnitude
                             if mag < 1 then mag = 1000 end
-                            args[2] = (targetPart.Position - origin).Unit * mag
+                            args[2] = (targetPos - origin).Unit * mag
                             return oldNamecall(self, table.unpack(args))
                         end
                     end
@@ -2863,16 +3009,41 @@ pcall(function()
                     if typeof(ray) == "Ray" then
                         local _, targetPart = getClosestSilentAimTarget()
                         if targetPart then
+                            local targetPos = targetPart.Position
+                            if S.SilentAim.Prediction then
+                                local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
+                                if vel and typeof(vel) == "Vector3" then
+                                    targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
+                                end
+                            end
+
                             local origin = ray.Origin
                             local camPos = Camera.CFrame.Position
-                            if (origin - camPos).Magnitude < 40 then
+                            if (origin - camPos).Magnitude < 50 then
                                 local mag = ray.Direction.Magnitude
                                 if mag < 1 then mag = 1000 end
-                                local newDir = (targetPart.Position - origin).Unit * mag
+                                local newDir = (targetPos - origin).Unit * mag
                                 args[1] = Ray.new(origin, newDir)
                                 return oldNamecall(self, table.unpack(args))
                             end
                         end
+                    end
+                end
+            elseif (method == "ViewportPointToRay" or method == "ScreenPointToRay") and self == Camera then
+                if chance >= 100 or math.random(1, 100) <= chance then
+                    local _, targetPart = getClosestSilentAimTarget()
+                    if targetPart then
+                        local targetPos = targetPart.Position
+                        if S.SilentAim.Prediction then
+                            local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
+                            if vel and typeof(vel) == "Vector3" then
+                                targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
+                            end
+                        end
+
+                        local origin = Camera.CFrame.Position
+                        local dir = (targetPos - origin).Unit * 1000
+                        return Ray.new(origin, dir)
                     end
                 end
             end
@@ -2890,12 +3061,26 @@ pcall(function()
                     if idx == "Hit" then
                         local _, targetPart = getClosestSilentAimTarget()
                         if targetPart then
-                            return CFrame.new(targetPart.Position)
+                            local targetPos = targetPart.Position
+                            if S.SilentAim.Prediction then
+                                local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
+                                if vel and typeof(vel) == "Vector3" then
+                                    targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
+                                end
+                            end
+                            return CFrame.new(targetPos)
                         end
                     elseif idx == "Target" then
                         local _, targetPart = getClosestSilentAimTarget()
                         if targetPart then
                             return targetPart
+                        end
+                    elseif idx == "UnitRay" then
+                        local _, targetPart = getClosestSilentAimTarget()
+                        if targetPart then
+                            local origin = Camera.CFrame.Position
+                            local dir = (targetPart.Position - origin).Unit
+                            return Ray.new(origin, dir)
                         end
                     end
                 end
@@ -2920,6 +3105,7 @@ RunService.Heartbeat:Connect(function()
                         part.Size = orig.Size
                         part.Transparency = orig.Transparency
                         part.CanCollide = orig.CanCollide
+                        part.Massless = orig.Massless
                     end)
                 end
             end
@@ -2937,17 +3123,26 @@ RunService.Heartbeat:Connect(function()
             local isAlive = hum and hum.Health > 0
 
             local partsToExpand = {}
-            if cfg.TargetPart == "All" then
-                partsToExpand = {
-                    char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head"),
-                    char:FindFirstChild("HumanoidRootPart")
-                }
+            if cfg.TargetPart == "All" or cfg.TargetPart == "All (Head + Body)" then
+                local h = char:FindFirstChild("HitboxHead") or char:FindFirstChild("PhysicalHitboxHead") or char:FindFirstChild("Head")
+                local b = char:FindFirstChild("HitboxBody") or char:FindFirstChild("HitboxBodySmall") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("HumanoidRootPart")
+                if h then table.insert(partsToExpand, h) end
+                if b then table.insert(partsToExpand, b) end
             elseif cfg.TargetPart == "HitboxHead" then
-                partsToExpand = { char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head") }
+                local h = char:FindFirstChild("HitboxHead") or char:FindFirstChild("PhysicalHitboxHead") or char:FindFirstChild("Head")
+                if h then table.insert(partsToExpand, h) end
+            elseif cfg.TargetPart == "HitboxBody" then
+                local b = char:FindFirstChild("HitboxBody") or char:FindFirstChild("HitboxBodySmall") or char:FindFirstChild("UpperTorso")
+                if b then table.insert(partsToExpand, b) end
             elseif cfg.TargetPart == "Head" then
-                partsToExpand = { char:FindFirstChild("Head") }
+                local h = char:FindFirstChild("Head")
+                if h then table.insert(partsToExpand, h) end
+            elseif cfg.TargetPart == "HumanoidRootPart" then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then table.insert(partsToExpand, hrp) end
             else
-                partsToExpand = { char:FindFirstChild(cfg.TargetPart) or char:FindFirstChild("HumanoidRootPart") }
+                local pt = char:FindFirstChild(cfg.TargetPart) or char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head")
+                if pt then table.insert(partsToExpand, pt) end
             end
 
             local shouldExpand = cfg.HitboxExpander and isAlive
@@ -2985,7 +3180,8 @@ RunService.Heartbeat:Connect(function()
                         originalHitboxes[part] = {
                             Size = part.Size,
                             Transparency = part.Transparency,
-                            CanCollide = part.CanCollide
+                            CanCollide = part.CanCollide,
+                            Massless = part.Massless
                         }
                     end
 
@@ -2993,12 +3189,14 @@ RunService.Heartbeat:Connect(function()
                         part.Size = Vector3.new(cfg.HitboxSize, cfg.HitboxSize, cfg.HitboxSize)
                         part.Transparency = cfg.HitboxTransparency
                         part.CanCollide = false
+                        part.Massless = true
                     else
                         local orig = originalHitboxes[part]
                         if orig then
                             part.Size = orig.Size
                             part.Transparency = orig.Transparency
                             part.CanCollide = orig.CanCollide
+                            part.Massless = orig.Massless
                         end
                     end
                 end
@@ -3006,7 +3204,6 @@ RunService.Heartbeat:Connect(function()
         end
     end
 end)
-
 ---------------------------------------------------------------------
 -- VISUALS (ESP ENGINE: BOX 2D/3D, CHAMS/GLOW, NAMES, TRACERS)
 ---------------------------------------------------------------------
@@ -3805,6 +4002,7 @@ _G.VodkaHubCleanup = function()
                 part.Size = orig.Size
                 part.Transparency = orig.Transparency
                 part.CanCollide = orig.CanCollide
+                part.Massless = orig.Massless
             end)
         end
     end
