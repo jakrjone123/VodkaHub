@@ -2993,26 +2993,35 @@ RunService.Heartbeat:Connect(function()
 end)
 
 ---------------------------------------------------------------------
--- SILENT AIM HOOKS (Independent & Multi-Vector Redirection)
+-- SILENT AIM HOOK (Zero-Lag, Re-entrancy Protected & Direct)
 ---------------------------------------------------------------------
 pcall(function()
+    local inRaycast = false
     local oldRaycast
     oldRaycast = hookfunction(Workspace.Raycast, newcclosure(function(self, origin, direction, rayParams)
-        if isSilentAimActive() and not checkcaller() then
-            local chance = S.SilentAim.HitChance or 100
-            if chance >= 100 or math.random(1, 100) <= chance then
-                local _, targetPart = getClosestSilentAimTarget()
-                if targetPart and typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
-                    local targetPos = targetPart.Position
-                    if S.SilentAim.Prediction then
-                        local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
-                        if vel and typeof(vel) == "Vector3" then
-                            targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
-                        end
-                    end
+        if inRaycast or checkcaller() or not isSilentAimActive() then
+            return oldRaycast(self, origin, direction, rayParams)
+        end
 
-                    local camPos = Camera.CFrame.Position
-                    if (origin - camPos).Magnitude < 50 then
+        local chance = S.SilentAim.HitChance or 100
+        if chance >= 100 or math.random(1, 100) <= chance then
+            if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+                local camPos = Camera.CFrame.Position
+                -- Only redirect weapon fire rays originating near the player/camera (within 35 studs)
+                if (origin - camPos).Magnitude < 35 then
+                    inRaycast = true
+                    local _, targetPart = getClosestSilentAimTarget()
+                    inRaycast = false
+
+                    if targetPart and targetPart:IsDescendantOf(workspace) then
+                        local targetPos = targetPart.Position
+                        if S.SilentAim.Prediction then
+                            local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
+                            if vel and typeof(vel) == "Vector3" then
+                                targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
+                            end
+                        end
+
                         local mag = direction.Magnitude
                         if mag < 1 then mag = 1000 end
                         local newDir = (targetPos - origin).Unit * mag
@@ -3021,123 +3030,40 @@ pcall(function()
                 end
             end
         end
+
         return oldRaycast(self, origin, direction, rayParams)
     end))
 
-    local oldNamecall
-    oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
+    -- Direct hook for ViewportPointToRay (Used by certain raycast weapon systems)
+    local inVPRay = false
+    local oldVPRay
+    oldVPRay = hookfunction(Camera.ViewportPointToRay, newcclosure(function(self, x, y, depth)
+        if inVPRay or checkcaller() or not isSilentAimActive() then
+            return oldVPRay(self, x, y, depth)
+        end
 
-        if isSilentAimActive() and not checkcaller() then
-            local chance = S.SilentAim.HitChance or 100
-            if (method == "Raycast" or method == "raycast") and self == Workspace then
-                if chance >= 100 or math.random(1, 100) <= chance then
-                    local origin = args[1]
-                    local direction = args[2]
-                    local _, targetPart = getClosestSilentAimTarget()
-                    if targetPart and typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
-                        local targetPos = targetPart.Position
-                        if S.SilentAim.Prediction then
-                            local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
-                            if vel and typeof(vel) == "Vector3" then
-                                targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
-                            end
-                        end
+        local chance = S.SilentAim.HitChance or 100
+        if chance >= 100 or math.random(1, 100) <= chance then
+            inVPRay = true
+            local _, targetPart = getClosestSilentAimTarget()
+            inVPRay = false
 
-                        local camPos = Camera.CFrame.Position
-                        if (origin - camPos).Magnitude < 50 then
-                            local mag = direction.Magnitude
-                            if mag < 1 then mag = 1000 end
-                            args[2] = (targetPos - origin).Unit * mag
-                            return oldNamecall(self, table.unpack(args))
-                        end
+            if targetPart and targetPart:IsDescendantOf(workspace) then
+                local targetPos = targetPart.Position
+                if S.SilentAim.Prediction then
+                    local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
+                    if vel and typeof(vel) == "Vector3" then
+                        targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
                     end
                 end
-            elseif (method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist") and self == Workspace then
-                if chance >= 100 or math.random(1, 100) <= chance then
-                    local ray = args[1]
-                    if typeof(ray) == "Ray" then
-                        local _, targetPart = getClosestSilentAimTarget()
-                        if targetPart then
-                            local targetPos = targetPart.Position
-                            if S.SilentAim.Prediction then
-                                local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
-                                if vel and typeof(vel) == "Vector3" then
-                                    targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
-                                end
-                            end
 
-                            local origin = ray.Origin
-                            local camPos = Camera.CFrame.Position
-                            if (origin - camPos).Magnitude < 50 then
-                                local mag = ray.Direction.Magnitude
-                                if mag < 1 then mag = 1000 end
-                                local newDir = (targetPos - origin).Unit * mag
-                                args[1] = Ray.new(origin, newDir)
-                                return oldNamecall(self, table.unpack(args))
-                            end
-                        end
-                    end
-                end
-            elseif (method == "ViewportPointToRay" or method == "ScreenPointToRay") and self == Camera then
-                if chance >= 100 or math.random(1, 100) <= chance then
-                    local _, targetPart = getClosestSilentAimTarget()
-                    if targetPart then
-                        local targetPos = targetPart.Position
-                        if S.SilentAim.Prediction then
-                            local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
-                            if vel and typeof(vel) == "Vector3" then
-                                targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
-                            end
-                        end
-
-                        local origin = Camera.CFrame.Position
-                        local dir = (targetPos - origin).Unit * 1000
-                        return Ray.new(origin, dir)
-                    end
-                end
+                local origin = Camera.CFrame.Position
+                local unitDir = (targetPos - origin).Unit
+                return Ray.new(origin, unitDir)
             end
         end
 
-        return oldNamecall(self, ...)
-    end))
-
-    local oldIndex
-    oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, idx)
-        if isSilentAimActive() and not checkcaller() then
-            if typeof(self) == "Instance" and self:IsA("Mouse") then
-                local chance = S.SilentAim.HitChance or 100
-                if chance >= 100 or math.random(1, 100) <= chance then
-                    if idx == "Hit" then
-                        local _, targetPart = getClosestSilentAimTarget()
-                        if targetPart then
-                            local targetPos = targetPart.Position
-                            if S.SilentAim.Prediction then
-                                local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
-                                if vel and typeof(vel) == "Vector3" then
-                                    targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
-                                end
-                            end
-                            return CFrame.new(targetPos)
-                        end
-                    elseif idx == "Target" then
-                        local _, targetPart = getClosestSilentAimTarget()
-                        if targetPart then
-                            return targetPart
-                        end
-                    elseif idx == "UnitRay" then
-                        local _, targetPart = getClosestSilentAimTarget()
-                        if targetPart then
-                            local origin = Camera.CFrame.Position
-                            local dir = (targetPart.Position - origin).Unit
-                            return Ray.new(origin, dir)
-                        end
-                    end
-                end
-            end
-        end
-        return oldIndex(self, idx)
+        return oldVPRay(self, x, y, depth)
     end))
 end)
 
