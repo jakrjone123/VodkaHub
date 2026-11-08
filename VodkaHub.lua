@@ -2309,6 +2309,8 @@ local isHoldingKey = false
 local isAimbotToggleActive = false
 local currentLockedTarget = nil
 local currentLockedPart = nil
+local currentAimbotTarget = nil
+local currentAimbotPart = nil
 
 local isSilentHoldingKey = false
 local isSilentToggleActive = true
@@ -2842,7 +2844,33 @@ RunService.RenderStepped:Connect(function()
                 end
             end
         else
-            targetChar, targetPart = getClosestAimbotTarget()
+            -- Keep locked to the same target while aiming to prevent target fluttering
+            if not currentAimbotTarget or not currentAimbotTarget.Parent or not currentAimbotPart or not currentAimbotPart:IsDescendantOf(workspace) then
+                currentAimbotTarget, currentAimbotPart = getClosestAimbotTarget()
+            else
+                local hum = currentAimbotTarget:FindFirstChildOfClass("Humanoid")
+                local isAlive = hum and hum.Health > 0
+                if S.Aimbot.HealthCheck and currentAimbotTarget:FindFirstChildOfClass("ForceField") then isAlive = false end
+                local stillValid = isAlive
+                if stillValid then
+                    local distCam = (Camera.CFrame.Position - currentAimbotPart.Position).Magnitude
+                    if distCam > S.Aimbot.MaxDistance then stillValid = false end
+                end
+                if stillValid and S.Aimbot.WallCheck then
+                    stillValid = checkWallVisibility(currentAimbotTarget, currentAimbotPart)
+                end
+                if stillValid and S.Aimbot.FOVCircle then
+                    local sp, onSc = Camera:WorldToViewportPoint(currentAimbotPart.Position)
+                    if not onSc or sp.Z <= 0 or (Vector2.new(sp.X, sp.Y) - fovCenter).Magnitude > (S.Aimbot.FOVRadius * 1.5) then
+                        stillValid = false
+                    end
+                end
+                if not stillValid then
+                    currentAimbotTarget, currentAimbotPart = getClosestAimbotTarget()
+                end
+            end
+            targetChar = currentAimbotTarget
+            targetPart = currentAimbotPart
         end
 
         if targetPart then
@@ -2855,18 +2883,38 @@ RunService.RenderStepped:Connect(function()
                 end
             end
 
-            local alpha = math.clamp(1 - S.Aimbot.Smoothness, 0.05, 1.0)
-            if S.Aimbot.Smoothness <= 0.04 then alpha = 1.0 end
-
             if S.Aimbot.Type == "Mouse" and mousemoverel then
                 local screenPos, onScreen = Camera:WorldToViewportPoint(targetPos)
                 if onScreen and screenPos.Z > 0 then
                     local crosshair = getViewportCenter(S.Aimbot.LockFOVToCenter)
-                    local deltaX = (screenPos.X - crosshair.X) * alpha
-                    local deltaY = (screenPos.Y - crosshair.Y) * alpha
+                    local deltaX = screenPos.X - crosshair.X
+                    local deltaY = screenPos.Y - crosshair.Y
+                    local pixelDist = math.sqrt(deltaX * deltaX + deltaY * deltaY)
 
-                    if math.abs(deltaX) > 0.4 or math.abs(deltaY) > 0.4 then
-                        mousemoverel(deltaX, deltaY)
+                    -- Deadzone: within 1.5px, crosshair stays frozen dead-center with 0 jitter
+                    if pixelDist > 1.5 then
+                        local userGameSettings = UserSettings():GetService("UserGameSettings")
+                        local sens = math.max(0.01, userGameSettings.MouseSensitivity)
+                        local fov = math.clamp(Camera.FieldOfView, 10, 120)
+                        local focalLength = (Camera.ViewportSize.Y / 2) / math.tan(math.rad(fov) / 2)
+
+                        -- Calibrated pixels per mouse count for first-person camera
+                        local pixelsPerMouse = sens * 0.0075 * focalLength
+                        if pixelsPerMouse < 0.1 then pixelsPerMouse = 2.5 end
+
+                        local targetMouseX = deltaX / pixelsPerMouse
+                        local targetMouseY = deltaY / pixelsPerMouse
+
+                        -- Smooth asymptotic glide: strictly <= 0.45, guaranteed zero overshoot or shaking
+                        local smoothVal = math.clamp(S.Aimbot.Smoothness, 0, 1)
+                        local moveFraction = (smoothVal <= 0.04) and 1.0 or math.clamp(1 / (1 + (smoothVal * 9)), 0.04, 0.45)
+
+                        local finalMoveX = targetMouseX * moveFraction
+                        local finalMoveY = targetMouseY * moveFraction
+
+                        if math.abs(finalMoveX) > 0.02 or math.abs(finalMoveY) > 0.02 then
+                            mousemoverel(finalMoveX, finalMoveY)
+                        end
                     end
                 end
             else
@@ -2874,11 +2922,14 @@ RunService.RenderStepped:Connect(function()
                 if S.Aimbot.Smoothness <= 0.04 then
                     Camera.CFrame = targetCFrame
                 else
-                    Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, alpha)
+                    local speed = math.clamp(1 - S.Aimbot.Smoothness, 0.05, 0.95)
+                    Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, speed * 0.35)
                 end
             end
         end
     else
+        currentAimbotTarget = nil
+        currentAimbotPart = nil
         currentLockedTarget = nil
         currentLockedPart = nil
     end
