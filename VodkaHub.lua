@@ -62,10 +62,11 @@ local S = {
         HealthCheck = true,
         TeamCheck = false,
         WallCheck = false,
+        UseFOV = true,
         FOVCircle = false,
         LockFOVToCenter = true,
         MaxDistance = 1500,
-        FOVRadius = 140,
+        FOVRadius = 200,
         HitChance = 100,
         Prediction = false,
         PredictionAmount = 0.05,
@@ -205,6 +206,17 @@ local S = {
 _G.VodkaState = S
 pcall(function() if shared then shared.VodkaState = S end end)
 pcall(function() if getgenv and type(getgenv) == "function" then getgenv().VodkaState = S end end)
+local currentLockedTarget = nil
+local currentLockedPart = nil
+local currentAimbotTarget = nil
+local currentAimbotPart = nil
+local currentStickyAimbot = nil
+local currentStickyAimbotPart = nil
+local currentStickySilent = nil
+local currentStickySilentPart = nil
+local isSilentToggleActive = true
+local originalHitboxes = {}
+local flyBV = nil
 
 -- Independent Drawing API FOV Circles
 local aimbotFovDrawing = nil
@@ -1798,23 +1810,48 @@ local cSilentAim, cSilentTabs = createCardWithSubtabs(colRight, { "Silent Aim", 
 -- Subtab: Silent Aim
 createSwitchWithKeybind(cSilentTabs["Silent Aim"], "Silent Aim", S.SilentAim.Enabled, S.SilentAim.Key, function(v)
     S.SilentAim.Enabled = v
-    if v then isSilentToggleActive = true end
+    if v then
+        isSilentToggleActive = true
+    else
+        currentStickySilent = nil
+        currentStickySilentPart = nil
+    end
 end, function(newKey)
     S.SilentAim.Key = newKey
 end, 1)
 
 createDropdown(cSilentTabs["Silent Aim"], "Silent Aim Mode", { "Always", "Hold", "Toggle" }, S.SilentAim.Mode, function(v)
     S.SilentAim.Mode = v
+    currentStickySilent = nil
+    currentStickySilentPart = nil
 end, 2)
 
 createDropdown(cSilentTabs["Silent Aim"], "Look (Hit Parts)", { "Head", "UpperTorso", "HumanoidRootPart", "Closest", "Random" }, S.SilentAim.TargetPart, function(v)
     S.SilentAim.TargetPart = v
+    currentStickySilent = nil
+    currentStickySilentPart = nil
 end, 3)
 
-createSwitch(cSilentTabs["Silent Aim"], "Sticky Aim", S.SilentAim.StickyAim, function(v) S.SilentAim.StickyAim = v end, 4)
-createSwitch(cSilentTabs["Silent Aim"], "Health Check", S.SilentAim.HealthCheck, function(v) S.SilentAim.HealthCheck = v end, 5)
-createSwitch(cSilentTabs["Silent Aim"], "Team Check", S.SilentAim.TeamCheck, function(v) S.SilentAim.TeamCheck = v end, 6)
-createSwitch(cSilentTabs["Silent Aim"], "Wall Check", S.SilentAim.WallCheck, function(v) S.SilentAim.WallCheck = v end, 7)
+createSwitch(cSilentTabs["Silent Aim"], "Sticky Aim", S.SilentAim.StickyAim, function(v)
+    S.SilentAim.StickyAim = v
+    currentStickySilent = nil
+    currentStickySilentPart = nil
+end, 4)
+createSwitch(cSilentTabs["Silent Aim"], "Health Check", S.SilentAim.HealthCheck, function(v)
+    S.SilentAim.HealthCheck = v
+    currentStickySilent = nil
+    currentStickySilentPart = nil
+end, 5)
+createSwitch(cSilentTabs["Silent Aim"], "Team Check", S.SilentAim.TeamCheck, function(v)
+    S.SilentAim.TeamCheck = v
+    currentStickySilent = nil
+    currentStickySilentPart = nil
+end, 6)
+createSwitch(cSilentTabs["Silent Aim"], "Wall Check", S.SilentAim.WallCheck, function(v)
+    S.SilentAim.WallCheck = v
+    currentStickySilent = nil
+    currentStickySilentPart = nil
+end, 7)
 createSlider(cSilentTabs["Silent Aim"], "Hit Chance", 1, 100, S.SilentAim.HitChance, false, function(v) S.SilentAim.HitChance = v end, 8)
 
 -- Subtab: Prediction
@@ -1823,15 +1860,16 @@ createSlider(cSilentTabs["Prediction"], "Prediction Amount", 0, 0.25, S.SilentAi
 createSlider(cSilentTabs["Prediction"], "Max Distance", 50, 3000, S.SilentAim.MaxDistance, false, function(v) S.SilentAim.MaxDistance = v end, 3)
 
 -- Subtab: FOV
+createSwitch(cSilentTabs["FOV"], "Use FOV", S.SilentAim.UseFOV, function(v) S.SilentAim.UseFOV = v end, 1)
 createSwitch(cSilentTabs["FOV"], "FOV Circle", S.SilentAim.FOVCircle, function(v)
     S.SilentAim.FOVCircle = v
-    if silentFovDrawing then silentFovDrawing.Visible = v end
-end, 1)
-createSwitch(cSilentTabs["FOV"], "Lock FOV To Center", S.SilentAim.LockFOVToCenter, function(v) S.SilentAim.LockFOVToCenter = v end, 2)
-createSlider(cSilentTabs["FOV"], "FOV Radius", 30, 500, S.SilentAim.FOVRadius, false, function(v)
+    if silentFovDrawing then silentFovDrawing.Visible = (v and S.SilentAim.Enabled) end
+end, 2)
+createSwitch(cSilentTabs["FOV"], "Lock FOV To Center", S.SilentAim.LockFOVToCenter, function(v) S.SilentAim.LockFOVToCenter = v end, 3)
+createSlider(cSilentTabs["FOV"], "FOV Radius", 30, 800, S.SilentAim.FOVRadius, false, function(v)
     S.SilentAim.FOVRadius = v
     if silentFovDrawing then silentFovDrawing.Radius = v end
-end, 3)
+end, 4)
 
 -- 4. TRIGGERBOT CARD (Right Column Bottom - Matches Reference Style)
 local cTrigger = createCard(colRight, "TRIGGER BOT", 1, 2)
@@ -2305,15 +2343,39 @@ end)
 ---------------------------------------------------------------------
 -- COMBAT & GAMEPLAY LOGIC (AIMBOT, SILENT AIM, TRIGGERBOT, HITBOX)
 ---------------------------------------------------------------------
+pcall(function() ScreenGui.AutoLocalize = false end)
+
+local vodkaConnections = {}
+local function addConn(conn)
+    if conn then table.insert(vodkaConnections, conn) end
+    return conn
+end
+
+local function getCamera()
+    local c = Workspace.CurrentCamera
+    if c then Camera = c end
+    return Camera
+end
+
+addConn(Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    if Workspace.CurrentCamera then Camera = Workspace.CurrentCamera end
+end))
+
+-- Preserve original unhooked engine C functions across reloads
+_G.VodkaRawFunctions = _G.VodkaRawFunctions or {
+    Raycast = Workspace.Raycast,
+    FindPartOnRay = Workspace.FindPartOnRay,
+    FindPartOnRayWithIgnoreList = Workspace.FindPartOnRayWithIgnoreList,
+    FindPartOnRayWithWhitelist = Workspace.FindPartOnRayWithWhitelist,
+    ViewportPointToRay = Camera and Camera.ViewportPointToRay or nil,
+    ScreenPointToRay = Camera and Camera.ScreenPointToRay or nil,
+}
+local rawRaycast = _G.VodkaRawFunctions.Raycast or Workspace.Raycast
+
 local isHoldingKey = false
 local isAimbotToggleActive = false
-local currentLockedTarget = nil
-local currentLockedPart = nil
-local currentAimbotTarget = nil
-local currentAimbotPart = nil
 
 local isSilentHoldingKey = false
-local isSilentToggleActive = true
 
 local isTriggerHolding = false
 local isTriggerToggleActive = false
@@ -2351,7 +2413,8 @@ end
 
 -- Viewport center calculation depending on LockFOVToCenter
 local function getViewportCenter(lockToCenter)
-    local vp = Camera.ViewportSize
+    local cam = getCamera()
+    local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
     if lockToCenter or UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
         return Vector2.new(vp.X / 2, vp.Y / 2)
     else
@@ -2362,7 +2425,8 @@ end
 
 -- Screen Drawing center calculation
 local function getDrawingCenter(lockToCenter)
-    local vp = Camera.ViewportSize
+    local cam = getCamera()
+    local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
     if lockToCenter or UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
         return Vector2.new(vp.X / 2, vp.Y / 2)
     else
@@ -2370,10 +2434,11 @@ local function getDrawingCenter(lockToCenter)
     end
 end
 
--- Helper: resolve target part for a character with support for Closest, Random, HitboxHead, HitboxBody
-local function getTargetPartForChar(char, preference, fromPos)
+-- Helper: resolve target part for a character with support for Closest (2D crosshair), Random, HitboxHead, HitboxBody
+local function getTargetPartForChar(char, preference, fromPos, center)
     if not char then return nil end
     preference = preference or "Head"
+    local cam = getCamera()
 
     if preference == "Head" then
         return char:FindFirstChild("HitboxHead") 
@@ -2406,7 +2471,7 @@ local function getTargetPartForChar(char, preference, fromPos)
             char:FindFirstChild("HumanoidRootPart")
         }
         local valid = {}
-        for _, p in ipairs(parts) do if p then table.insert(valid, p) end end
+        for _, p in ipairs(parts) do if p and p:IsA("BasePart") then table.insert(valid, p) end end
         if #valid > 0 then
             return valid[math.random(1, #valid)]
         end
@@ -2419,13 +2484,30 @@ local function getTargetPartForChar(char, preference, fromPos)
         }
         local bestP = nil
         local bestD = math.huge
-        local testPos = fromPos or Camera.CFrame.Position
-        for _, p in ipairs(parts) do
-            if p and p:IsA("BasePart") then
-                local d = (p.Position - testPos).Magnitude
-                if d < bestD then
-                    bestD = d
-                    bestP = p
+        local scrCenter = center or getViewportCenter(true)
+        if cam then
+            for _, p in ipairs(parts) do
+                if p and p:IsA("BasePart") then
+                    local sp, onSc = cam:WorldToViewportPoint(p.Position)
+                    if onSc and sp.Z > 0 then
+                        local d = (Vector2.new(sp.X, sp.Y) - scrCenter).Magnitude
+                        if d < bestD then
+                            bestD = d
+                            bestP = p
+                        end
+                    end
+                end
+            end
+        end
+        if not bestP then
+            local testPos = fromPos or (cam and cam.CFrame.Position) or Vector3.zero
+            for _, p in ipairs(parts) do
+                if p and p:IsA("BasePart") then
+                    local d = (p.Position - testPos).Magnitude
+                    if d < bestD then
+                        bestD = d
+                        bestP = p
+                    end
                 end
             end
         end
@@ -2443,10 +2525,50 @@ local function isTeammate(p)
     return false
 end
 
--- Helper: check line of sight between camera and target part with multi-pierce for transparent barriers
+-- Cached Shooting Range / Bot Dummies (refreshed every 1s for zero frame overhead)
+local cachedDummyModels = {}
+local lastDummyScan = 0
+local function getDummyTargetModels()
+    local now = os.clock()
+    if now - lastDummyScan < 1.0 then
+        return cachedDummyModels
+    end
+    lastDummyScan = now
+    table.clear(cachedDummyModels)
+    local seen = {}
+    local function considerModel(m)
+        if not m or seen[m] or m == LocalPlayer.Character then return end
+        if Players:GetPlayerFromCharacter(m) then return end
+        local hum = m:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Health > 0 and (m:FindFirstChild("Head") or m:FindFirstChild("HitboxHead") or m:FindFirstChild("HumanoidRootPart")) then
+            seen[m] = true
+            table.insert(cachedDummyModels, m)
+        end
+    end
+    for _, child in ipairs(Workspace:GetChildren()) do
+        local n = child.Name:lower()
+        if child:IsA("Model") then
+            if n:find("dummy") or n:find("bot") or n:find("target") or n:find("npc") or n:find("enemy") then
+                considerModel(child)
+            end
+        elseif child:IsA("Folder") then
+            if n:find("range") or n:find("dummy") or n:find("dummies") or n:find("bot") or n:find("target") or n:find("npc") or n:find("entit") or n:find("enem") then
+                for _, desc in ipairs(child:GetDescendants()) do
+                    if desc:IsA("Model") then
+                        considerModel(desc)
+                    end
+                end
+            end
+        end
+    end
+    return cachedDummyModels
+end
+
+-- Helper: check line of sight using raw unhooked Raycast (zero hook recursion)
 local function checkWallVisibility(char, part)
-    if not part then return false end
-    local origin = Camera.CFrame.Position
+    local cam = getCamera()
+    if not part or not cam then return false end
+    local origin = cam.CFrame.Position
     local dir = part.Position - origin
     local dist = dir.Magnitude
     if dist < 0.5 then return true end
@@ -2460,7 +2582,7 @@ local function checkWallVisibility(char, part)
     local currentOrigin = origin
     local remainingDir = dir
     for i = 1, 4 do
-        local result = Workspace:Raycast(currentOrigin, remainingDir, rayParams)
+        local result = rawRaycast(Workspace, currentOrigin, remainingDir, rayParams)
         if not result then
             return true
         end
@@ -2493,12 +2615,7 @@ local function checkWallVisibility(char, part)
     return false
 end
 
--- Sticky Aim storage
-local currentStickyAimbot = nil
-local currentStickyAimbotPart = nil
-
-local currentStickySilent = nil
-local currentStickySilentPart = nil
+-- Sticky Aim storage (declared above UI)
 
 -- 1. Independent Closest Target for AIMBOT
 local function getClosestAimbotTarget()
@@ -2545,7 +2662,7 @@ local function getClosestAimbotTarget()
                 if cfg.HealthCheck and char:FindFirstChildOfClass("ForceField") then isAlive = false end
 
                 if isAlive then
-                    local targetPart = getTargetPartForChar(char, cfg.TargetPart, Camera.CFrame.Position)
+                    local targetPart = getTargetPartForChar(char, cfg.TargetPart, Camera.CFrame.Position, center)
                     if targetPart then
                         local distFromCam = (Camera.CFrame.Position - targetPart.Position).Magnitude
                         if distFromCam <= cfg.MaxDistance then
@@ -2577,12 +2694,15 @@ local function getClosestAimbotTarget()
     return bestTarget, bestPart
 end
 
--- 2. Independent Closest Target for SILENT AIM
+-- 2. Independent Closest Target for SILENT AIM (Players + Shooting Range Bots)
 local function getClosestSilentAimTarget()
     local cfg = S.SilentAim
     if not cfg.Enabled then return nil, nil end
+    local cam = getCamera()
+    if not cam then return nil, nil end
 
     local center = getViewportCenter(cfg.LockFOVToCenter)
+    local maxFov = cfg.UseFOV and cfg.FOVRadius or math.huge
 
     -- Sticky Aim handling for Silent Aim
     if cfg.StickyAim and currentStickySilent and currentStickySilent.Parent then
@@ -2591,13 +2711,13 @@ local function getClosestSilentAimTarget()
         if cfg.HealthCheck and currentStickySilent:FindFirstChildOfClass("ForceField") then isAlive = false end
 
         if isAlive and currentStickySilentPart and currentStickySilentPart:IsDescendantOf(workspace) then
-            local distFromCam = (Camera.CFrame.Position - currentStickySilentPart.Position).Magnitude
+            local distFromCam = (cam.CFrame.Position - currentStickySilentPart.Position).Magnitude
             if distFromCam <= cfg.MaxDistance then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(currentStickySilentPart.Position)
+                local screenPos, onScreen = cam:WorldToViewportPoint(currentStickySilentPart.Position)
                 if onScreen and screenPos.Z > 0 then
                     local screenVec = Vector2.new(screenPos.X, screenPos.Y)
                     local dist = (screenVec - center).Magnitude
-                    if dist <= cfg.FOVRadius * 1.5 then
+                    if not cfg.UseFOV or dist <= (cfg.FOVRadius * 1.5) then
                         if not cfg.WallCheck or checkWallVisibility(currentStickySilent, currentStickySilentPart) then
                             return currentStickySilent, currentStickySilentPart
                         end
@@ -2611,38 +2731,45 @@ local function getClosestSilentAimTarget()
 
     local bestTarget = nil
     local bestPart = nil
-    local shortestDist = cfg.FOVRadius
+    local shortestDist = maxFov
+
+    local function evaluateChar(char, playerObj)
+        if not char or char == LocalPlayer.Character then return end
+        if playerObj and cfg.TeamCheck and isTeammate(playerObj) then return end
+
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local isAlive = hum and hum.Health > 0
+        if cfg.HealthCheck and char:FindFirstChildOfClass("ForceField") then isAlive = false end
+        if not isAlive then return end
+
+        local targetPart = getTargetPartForChar(char, cfg.TargetPart, cam.CFrame.Position, center)
+        if not targetPart then return end
+
+        local distFromCam = (cam.CFrame.Position - targetPart.Position).Magnitude
+        if distFromCam > cfg.MaxDistance then return end
+
+        local screenPos, onScreen = cam:WorldToViewportPoint(targetPart.Position)
+        if not onScreen or screenPos.Z <= 0 then return end
+
+        local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+        if (not cfg.UseFOV or dist <= cfg.FOVRadius) and dist < shortestDist then
+            if not cfg.WallCheck or checkWallVisibility(char, targetPart) then
+                shortestDist = dist
+                bestTarget = char
+                bestPart = targetPart
+            end
+        end
+    end
 
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character then
-            if not cfg.TeamCheck or not isTeammate(p) then
-                local char = p.Character
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                local isAlive = hum and hum.Health > 0
-                if cfg.HealthCheck and char:FindFirstChildOfClass("ForceField") then isAlive = false end
+            evaluateChar(p.Character, p)
+        end
+    end
 
-                if isAlive then
-                    local targetPart = getTargetPartForChar(char, cfg.TargetPart, Camera.CFrame.Position)
-                    if targetPart then
-                        local distFromCam = (Camera.CFrame.Position - targetPart.Position).Magnitude
-                        if distFromCam <= cfg.MaxDistance then
-                            local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
-                            if onScreen and screenPos.Z > 0 then
-                                local screenVec = Vector2.new(screenPos.X, screenPos.Y)
-                                local dist = (screenVec - center).Magnitude
-
-                                if dist <= cfg.FOVRadius and dist <= shortestDist then
-                                    if not cfg.WallCheck or checkWallVisibility(char, targetPart) then
-                                        shortestDist = dist
-                                        bestTarget = char
-                                        bestPart = targetPart
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
+    if not bestTarget then
+        for _, dummyChar in ipairs(getDummyTargetModels()) do
+            evaluateChar(dummyChar, nil)
         end
     end
 
@@ -2655,7 +2782,7 @@ local function getClosestSilentAimTarget()
 end
 
 -- Key Input Listeners for Aimbot
-UserInputService.InputBegan:Connect(function(input, gpe)
+addConn(UserInputService.InputBegan:Connect(function(input, gpe)
     if isInputMatchingBind(input, S.Aimbot.Key) then
         if S.Aimbot.Mode == "Hold" then
             isHoldingKey = true
@@ -2670,34 +2797,34 @@ UserInputService.InputBegan:Connect(function(input, gpe)
             end
         end
     end
-end)
+end))
 
-UserInputService.InputEnded:Connect(function(input, gpe)
+addConn(UserInputService.InputEnded:Connect(function(input, gpe)
     if isInputMatchingBind(input, S.Aimbot.Key) then
         if S.Aimbot.Mode == "Hold" then
             isHoldingKey = false
         end
     end
-end)
+end))
 
 -- Key Input Listeners for Silent Aim
-UserInputService.InputBegan:Connect(function(input, gpe)
+addConn(UserInputService.InputBegan:Connect(function(input, gpe)
     if isInputMatchingBind(input, S.SilentAim.Key) then
         isSilentHoldingKey = true
         if S.SilentAim.Mode == "Toggle" then
             isSilentToggleActive = not isSilentToggleActive
         end
     end
-end)
+end))
 
-UserInputService.InputEnded:Connect(function(input, gpe)
+addConn(UserInputService.InputEnded:Connect(function(input, gpe)
     if isInputMatchingBind(input, S.SilentAim.Key) then
         isSilentHoldingKey = false
     end
-end)
+end))
 
 -- Key Input Listeners for TriggerBot
-UserInputService.InputBegan:Connect(function(input, gpe)
+addConn(UserInputService.InputBegan:Connect(function(input, gpe)
     if isInputMatchingBind(input, S.TriggerBot.Key) then
         if S.TriggerBot.Mode == "Hold" then
             isTriggerHolding = true
@@ -2705,18 +2832,18 @@ UserInputService.InputBegan:Connect(function(input, gpe)
             isTriggerToggleActive = not isTriggerToggleActive
         end
     end
-end)
+end))
 
-UserInputService.InputEnded:Connect(function(input, gpe)
+addConn(UserInputService.InputEnded:Connect(function(input, gpe)
     if isInputMatchingBind(input, S.TriggerBot.Key) then
         if S.TriggerBot.Mode == "Hold" then
             isTriggerHolding = false
         end
     end
-end)
+end))
 
 -- Key Input Listener for Master ESP
-UserInputService.InputBegan:Connect(function(input, gpe)
+addConn(UserInputService.InputBegan:Connect(function(input, gpe)
     if not gpe and S.ESP.Key and isInputMatchingBind(input, S.ESP.Key) then
         local newV = not S.ESP.Enabled
         if visualSwitches and visualSwitches["Master_ESP"] then
@@ -2725,7 +2852,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
             S.ESP.Enabled = newV
         end
     end
-end)
+end))
 
 local function isAimbotActive()
     if not S.Aimbot.Enabled then return false end
@@ -2765,7 +2892,8 @@ local function isTriggerActive()
 end
 
 -- Render loop: Aimbot + Independent FOV Circles
-RunService.RenderStepped:Connect(function()
+addConn(RunService.RenderStepped:Connect(function()
+    getCamera()
     -- Aimbot FOV Circle
     if aimbotFovDrawing then
         if S.Aimbot.FOVCircle and S.Aimbot.Enabled then
@@ -2933,7 +3061,7 @@ RunService.RenderStepped:Connect(function()
         currentLockedTarget = nil
         currentLockedPart = nil
     end
-end)
+end))
 
 ---------------------------------------------------------------------
 -- TRIGGERBOT ENGINE
@@ -2954,17 +3082,19 @@ local function fireTriggerBot()
     end
 end
 
-RunService.Heartbeat:Connect(function()
+addConn(RunService.Heartbeat:Connect(function()
     if not isTriggerActive() then return end
     if isTriggerFiring then return end
+    local cam = getCamera()
+    if not cam then return end
 
-    local origin = Camera.CFrame.Position
-    local direction = Camera.CFrame.LookVector * S.TriggerBot.MaxDistance
+    local origin = cam.CFrame.Position
+    local direction = cam.CFrame.LookVector * S.TriggerBot.MaxDistance
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = { LocalPlayer.Character }
     rayParams.IgnoreWater = true
-    local result = Workspace:Raycast(origin, direction, rayParams)
+    local result = rawRaycast(Workspace, origin, direction, rayParams)
 
     if result and result.Instance then
         local hitPart = result.Instance
@@ -2972,8 +3102,8 @@ RunService.Heartbeat:Connect(function()
         local hum = hitChar and hitChar:FindFirstChildOfClass("Humanoid")
         local player = hitChar and Players:GetPlayerFromCharacter(hitChar)
 
-        if player and player ~= LocalPlayer and hum and hum.Health > 0 then
-            if not S.TriggerBot.TeamCheck or not isTeammate(player) then
+        if ((player and player ~= LocalPlayer) or (not player and hitChar and hitChar ~= LocalPlayer.Character)) and hum and hum.Health > 0 then
+            if not player or not S.TriggerBot.TeamCheck or not isTeammate(player) then
                 if not S.TriggerBot.VisibleCheck or checkWallVisibility(hitChar, hitPart) then
                     isTriggerFiring = true
                     task.spawn(function()
@@ -2990,89 +3120,323 @@ RunService.Heartbeat:Connect(function()
             end
         end
     end
+end))
+
+---------------------------------------------------------------------
+-- SILENT AIM ENGINE (Reload-Safe __namecall + Raycast + RIVALS Native)
+---------------------------------------------------------------------
+local function getSilentTargetPosition()
+    local chance = S.SilentAim.HitChance or 100
+    if chance < 100 and math.random(1, 100) > chance then
+        return nil, nil
+    end
+    local _, targetPart = getClosestSilentAimTarget()
+    if not targetPart or not targetPart:IsDescendantOf(workspace) then
+        return nil, nil
+    end
+    local targetPos = targetPart.Position
+    if S.SilentAim.Prediction then
+        local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
+        if vel and typeof(vel) == "Vector3" then
+            targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
+        end
+    end
+    return targetPos, targetPart
+end
+
+local function redirectCameraDataValue(camData, targetPos, camPos)
+    if typeof(camData) == "CFrame" then
+        return CFrame.lookAt(camData.Position, targetPos)
+    elseif typeof(camData) == "Vector3" then
+        return (targetPos - (camPos or Camera.CFrame.Position)).Unit
+    elseif type(camData) == "table" then
+        local cloned = {}
+        for k, v in pairs(camData) do
+            if typeof(v) == "CFrame" then
+                cloned[k] = CFrame.lookAt(v.Position, targetPos)
+            elseif typeof(v) == "Vector3" then
+                local kl = tostring(k):lower()
+                if kl:find("look") or kl:find("dir") then
+                    cloned[k] = (targetPos - (camPos or Camera.CFrame.Position)).Unit
+                elseif kl:find("hit") or kl:find("target") or kl:find("end") then
+                    cloned[k] = targetPos
+                else
+                    cloned[k] = v
+                end
+            else
+                cloned[k] = v
+            end
+        end
+        return cloned
+    end
+    return camData
+end
+
+local function isWeaponRayOrigin(origin)
+    local cam = getCamera()
+    if cam and (origin - cam.CFrame.Position).Magnitude < 45 then
+        return true
+    end
+    local char = LocalPlayer.Character
+    local head = char and (char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart"))
+    if head and (origin - head.Position).Magnitude < 35 then
+        return true
+    end
+    return false
+end
+
+_G.VodkaHookDispatch = {
+    Enabled = true,
+    InHook = false,
+    InRivalsShoot = false,
+    IsSilentActive = function() return S.SilentAim.Enabled and isSilentAimActive() end,
+    GetTargetPos = getSilentTargetPosition,
+    RedirectCameraData = redirectCameraDataValue,
+    IsWeaponOrigin = isWeaponRayOrigin,
+}
+
+pcall(function()
+    if _G.VodkaHooksInstalled then return end
+    _G.VodkaHooksInstalled = true
+
+    local rawFuncs = _G.VodkaRawFunctions
+    local fnRaycast = rawFuncs.Raycast
+    local fnFindPartOnRay = rawFuncs.FindPartOnRay
+    local fnFindIgnore = rawFuncs.FindPartOnRayWithIgnoreList
+    local fnFindWhite = rawFuncs.FindPartOnRayWithWhitelist
+    local fnVPRay = rawFuncs.ViewportPointToRay
+    local fnSPRay = rawFuncs.ScreenPointToRay
+
+    -- 1. Direct dot-syntax hook on Workspace.Raycast
+    if hookfunction and fnRaycast then
+        hookfunction(Workspace.Raycast, newcclosure(function(self, origin, direction, rayParams)
+            local d = _G.VodkaHookDispatch
+            if not d or not d.Enabled or d.InHook or checkcaller() or self ~= Workspace or not d.IsSilentActive() then
+                return fnRaycast(self, origin, direction, rayParams)
+            end
+            if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" and direction.Magnitude >= 15 and d.IsWeaponOrigin(origin) then
+                d.InHook = true
+                local ok, targetPos = pcall(d.GetTargetPos)
+                d.InHook = false
+                if ok and targetPos then
+                    local mag = direction.Magnitude
+                    if mag < 1 then mag = 1000 end
+                    return fnRaycast(self, origin, (targetPos - origin).Unit * mag, rayParams)
+                end
+            end
+            return fnRaycast(self, origin, direction, rayParams)
+        end))
+    end
+
+    -- 2. Direct hooks on Camera ViewportPointToRay / ScreenPointToRay (Unit Ray)
+    if hookfunction and fnVPRay and Camera then
+        hookfunction(Camera.ViewportPointToRay, newcclosure(function(self, x, y, depth)
+            local d = _G.VodkaHookDispatch
+            if not d or not d.Enabled or d.InHook or checkcaller() or not d.IsSilentActive() then
+                return fnVPRay(self, x, y, depth)
+            end
+            d.InHook = true
+            local ok, targetPos = pcall(d.GetTargetPos)
+            d.InHook = false
+            if ok and targetPos and Workspace.CurrentCamera then
+                local origin = Workspace.CurrentCamera.CFrame.Position
+                return Ray.new(origin, (targetPos - origin).Unit)
+            end
+            return fnVPRay(self, x, y, depth)
+        end))
+    end
+
+    if hookfunction and fnSPRay and Camera then
+        hookfunction(Camera.ScreenPointToRay, newcclosure(function(self, x, y, depth)
+            local d = _G.VodkaHookDispatch
+            if not d or not d.Enabled or d.InHook or checkcaller() or not d.IsSilentActive() then
+                return fnSPRay(self, x, y, depth)
+            end
+            d.InHook = true
+            local ok, targetPos = pcall(d.GetTargetPos)
+            d.InHook = false
+            if ok and targetPos and Workspace.CurrentCamera then
+                local origin = Workspace.CurrentCamera.CFrame.Position
+                return Ray.new(origin, (targetPos - origin).Unit)
+            end
+            return fnSPRay(self, x, y, depth)
+        end))
+    end
+
+    -- 3. Fast-path __namecall hook (Catches Workspace:Raycast colon calls without touching FireServer or clobbering namecallmethod)
+    if hookmetamethod then
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+            if checkcaller() then
+                return oldNamecall(self, ...)
+            end
+            local d = _G.VodkaHookDispatch
+            if not d or not d.Enabled or d.InHook or not d.IsSilentActive() then
+                return oldNamecall(self, ...)
+            end
+
+            if self == Workspace then
+                local method = getnamecallmethod()
+                if (method == "Raycast" or method == "raycast") and fnRaycast then
+                    local origin, direction, rayParams = ...
+                    if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" and direction.Magnitude >= 15 and d.IsWeaponOrigin(origin) then
+                        d.InHook = true
+                        local ok, targetPos = pcall(d.GetTargetPos)
+                        d.InHook = false
+                        if ok and targetPos then
+                            local mag = direction.Magnitude
+                            if mag < 1 then mag = 1000 end
+                            return fnRaycast(self, origin, (targetPos - origin).Unit * mag, rayParams)
+                        end
+                    end
+                    return fnRaycast(self, ...)
+                elseif method == "FindPartOnRay" and fnFindPartOnRay then
+                    local ray, ignoreDesc, terrainCells, ignoreWater = ...
+                    if typeof(ray) == "Ray" and ray.Direction.Magnitude >= 15 and d.IsWeaponOrigin(ray.Origin) then
+                        d.InHook = true
+                        local ok, targetPos = pcall(d.GetTargetPos)
+                        d.InHook = false
+                        if ok and targetPos then
+                            local mag = ray.Direction.Magnitude
+                            return fnFindPartOnRay(self, Ray.new(ray.Origin, (targetPos - ray.Origin).Unit * mag), ignoreDesc, terrainCells, ignoreWater)
+                        end
+                    end
+                    return fnFindPartOnRay(self, ...)
+                elseif method == "FindPartOnRayWithIgnoreList" and fnFindIgnore then
+                    local ray, ignoreList, terrainCells, ignoreWater = ...
+                    if typeof(ray) == "Ray" and ray.Direction.Magnitude >= 15 and d.IsWeaponOrigin(ray.Origin) then
+                        d.InHook = true
+                        local ok, targetPos = pcall(d.GetTargetPos)
+                        d.InHook = false
+                        if ok and targetPos then
+                            local mag = ray.Direction.Magnitude
+                            return fnFindIgnore(self, Ray.new(ray.Origin, (targetPos - ray.Origin).Unit * mag), ignoreList, terrainCells, ignoreWater)
+                        end
+                    end
+                    return fnFindIgnore(self, ...)
+                elseif method == "FindPartOnRayWithWhitelist" and fnFindWhite then
+                    local ray, whiteList, ignoreWater = ...
+                    if typeof(ray) == "Ray" and ray.Direction.Magnitude >= 15 and d.IsWeaponOrigin(ray.Origin) then
+                        d.InHook = true
+                        local ok, targetPos = pcall(d.GetTargetPos)
+                        d.InHook = false
+                        if ok and targetPos then
+                            local mag = ray.Direction.Magnitude
+                            return fnFindWhite(self, Ray.new(ray.Origin, (targetPos - ray.Origin).Unit * mag), whiteList, ignoreWater)
+                        end
+                    end
+                    return fnFindWhite(self, ...)
+                end
+            elseif self == Workspace.CurrentCamera then
+                local method = getnamecallmethod()
+                if method == "ViewportPointToRay" and fnVPRay then
+                    d.InHook = true
+                    local ok, targetPos = pcall(d.GetTargetPos)
+                    d.InHook = false
+                    if ok and targetPos then
+                        local origin = self.CFrame.Position
+                        return Ray.new(origin, (targetPos - origin).Unit)
+                    end
+                    return fnVPRay(self, ...)
+                elseif method == "ScreenPointToRay" and fnSPRay then
+                    d.InHook = true
+                    local ok, targetPos = pcall(d.GetTargetPos)
+                    d.InHook = false
+                    if ok and targetPos then
+                        local origin = self.CFrame.Position
+                        return Ray.new(origin, (targetPos - origin).Unit)
+                    end
+                    return fnSPRay(self, ...)
+                end
+            end
+
+            return oldNamecall(self, ...)
+        end))
+    end
 end)
 
----------------------------------------------------------------------
--- SILENT AIM HOOK (Zero-Lag, Re-entrancy Protected & Direct)
----------------------------------------------------------------------
-pcall(function()
-    local inRaycast = false
-    local oldRaycast
-    oldRaycast = hookfunction(Workspace.Raycast, newcclosure(function(self, origin, direction, rayParams)
-        if inRaycast or checkcaller() or not isSilentAimActive() then
-            return oldRaycast(self, origin, direction, rayParams)
-        end
+-- 4. RIVALS Native Gun / ClientFighter CameraData Hook (Zero impact on other games)
+task.spawn(function()
+    pcall(function()
+        if _G.VodkaRivalsHooked then return end
+        local ps = LocalPlayer:FindFirstChild("PlayerScripts")
+        local mods = ps and ps:FindFirstChild("Modules")
+        if not mods then return end
 
-        local chance = S.SilentAim.HitChance or 100
-        if chance >= 100 or math.random(1, 100) <= chance then
-            if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
-                local camPos = Camera.CFrame.Position
-                -- Only redirect weapon fire rays originating near the player/camera (within 35 studs)
-                if (origin - camPos).Magnitude < 35 then
-                    inRaycast = true
-                    local _, targetPart = getClosestSilentAimTarget()
-                    inRaycast = false
+        local itemTypes = mods:FindFirstChild("ItemTypes")
+        local gunMod = itemTypes and itemTypes:FindFirstChild("Gun")
+        local meleeMod = itemTypes and itemTypes:FindFirstChild("Melee")
+        local crc = mods:FindFirstChild("ClientReplicatedClasses")
+        local fighterMod = crc and crc:FindFirstChild("ClientFighter")
+        if not gunMod or not fighterMod then return end
 
-                    if targetPart and targetPart:IsDescendantOf(workspace) then
-                        local targetPos = targetPart.Position
-                        if S.SilentAim.Prediction then
-                            local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
-                            if vel and typeof(vel) == "Vector3" then
-                                targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
-                            end
+        local Gun = require(gunMod)
+        local ClientFighter = require(fighterMod)
+        if type(Gun) ~= "table" or type(ClientFighter) ~= "table" then return end
+        _G.VodkaRivalsHooked = true
+
+        if type(ClientFighter.GetCameraData) == "function" then
+            local oldGetCamData = ClientFighter.GetCameraData
+            ClientFighter.GetCameraData = function(self, ...)
+                local d = _G.VodkaHookDispatch
+                if d and d.Enabled and d.InRivalsShoot and not d.InHook and d.IsSilentActive() then
+                    local cam = Workspace.CurrentCamera
+                    local res = table.pack(oldGetCamData(self, ...))
+                    if res.n >= 1 and res[1] ~= nil then
+                        d.InHook = true
+                        local ok, targetPos = pcall(d.GetTargetPos)
+                        d.InHook = false
+                        if ok and targetPos then
+                            res[1] = d.RedirectCameraData(res[1], targetPos, cam and cam.CFrame.Position)
                         end
-
-                        local mag = direction.Magnitude
-                        if mag < 1 then mag = 1000 end
-                        local newDir = (targetPos - origin).Unit * mag
-                        return oldRaycast(self, origin, newDir, rayParams)
                     end
+                    return table.unpack(res, 1, res.n)
                 end
+                return oldGetCamData(self, ...)
             end
         end
 
-        return oldRaycast(self, origin, direction, rayParams)
-    end))
-
-    -- Direct hook for ViewportPointToRay (Used by certain raycast weapon systems)
-    local inVPRay = false
-    local oldVPRay
-    oldVPRay = hookfunction(Camera.ViewportPointToRay, newcclosure(function(self, x, y, depth)
-        if inVPRay or checkcaller() or not isSilentAimActive() then
-            return oldVPRay(self, x, y, depth)
-        end
-
-        local chance = S.SilentAim.HitChance or 100
-        if chance >= 100 or math.random(1, 100) <= chance then
-            inVPRay = true
-            local _, targetPart = getClosestSilentAimTarget()
-            inVPRay = false
-
-            if targetPart and targetPart:IsDescendantOf(workspace) then
-                local targetPos = targetPart.Position
-                if S.SilentAim.Prediction then
-                    local vel = targetPart.AssemblyLinearVelocity or targetPart.Velocity
-                    if vel and typeof(vel) == "Vector3" then
-                        targetPos = targetPos + (vel * (S.SilentAim.PredictionAmount or 0.05))
+        if type(Gun.StartShooting) == "function" then
+            local oldStartShooting = Gun.StartShooting
+            Gun.StartShooting = function(self, ...)
+                local d = _G.VodkaHookDispatch
+                if d and d.Enabled and d.IsSilentActive() then
+                    d.InRivalsShoot = true
+                    local res = table.pack(pcall(oldStartShooting, self, ...))
+                    d.InRivalsShoot = false
+                    if res[1] then
+                        return table.unpack(res, 2, res.n)
                     end
                 end
-
-                local origin = Camera.CFrame.Position
-                local unitDir = (targetPos - origin).Unit
-                return Ray.new(origin, unitDir)
+                return oldStartShooting(self, ...)
             end
         end
 
-        return oldVPRay(self, x, y, depth)
-    end))
+        if meleeMod then
+            local Melee = require(meleeMod)
+            if type(Melee) == "table" and type(Melee.StartShooting) == "function" then
+                local oldMeleeShoot = Melee.StartShooting
+                Melee.StartShooting = function(self, ...)
+                    local d = _G.VodkaHookDispatch
+                    if d and d.Enabled and d.IsSilentActive() then
+                        d.InRivalsShoot = true
+                        local res = table.pack(pcall(oldMeleeShoot, self, ...))
+                        d.InRivalsShoot = false
+                        if res[1] then
+                            return table.unpack(res, 2, res.n)
+                        end
+                    end
+                    return oldMeleeShoot(self, ...)
+                end
+            end
+        end
+    end)
 end)
 
 ---------------------------------------------------------------------
 -- AIMBOT TARGET / HITBOX EXPANDER (Independent)
 ---------------------------------------------------------------------
-local originalHitboxes = {}
-
-RunService.Heartbeat:Connect(function()
+addConn(RunService.Heartbeat:Connect(function()
     local cfg = S.AimbotTarget
     if not cfg.HitboxExpander then
         if next(originalHitboxes) ~= nil then
@@ -3180,7 +3544,7 @@ RunService.Heartbeat:Connect(function()
             end
         end
     end
-end)
+end))
 ---------------------------------------------------------------------
 -- VISUALS (ESP ENGINE: BOX 2D/3D, CHAMS/GLOW, NAMES, TRACERS)
 ---------------------------------------------------------------------
@@ -3919,7 +4283,6 @@ RunService.Stepped:Connect(function()
 end)
 
 -- Fly
-local flyBV = nil
 RunService.Heartbeat:Connect(function()
     local char = LocalPlayer.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -3985,6 +4348,11 @@ _G.VodkaHubCleanup = function()
     end
     table.clear(originalHitboxes)
     if flyBV then flyBV:Destroy(); flyBV = nil end
+    if _G.VodkaHookDispatch then _G.VodkaHookDispatch.Enabled = false end
+    for _, conn in ipairs(vodkaConnections) do
+        pcall(function() if conn and conn.Connected then conn:Disconnect() end end)
+    end
+    table.clear(vodkaConnections)
 end
 
 print("[VodkaHub] Loaded successfully!")
