@@ -2516,9 +2516,14 @@ local function getTargetPartForChar(char, preference, fromPos, center)
     return char:FindFirstChild(preference) or char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
 end
 
--- Helper: check if player is teammate
+-- Helper: check if player is teammate (supports RIVALS TeamID attribute + Roblox Team)
 local function isTeammate(p)
     if not p or p == LocalPlayer then return true end
+    local myTeamId = LocalPlayer:GetAttribute("TeamID")
+    local pTeamId = p:GetAttribute("TeamID")
+    if myTeamId ~= nil and pTeamId ~= nil then
+        return myTeamId == pTeamId
+    end
     if LocalPlayer.Team and p.Team and LocalPlayer.Team == p.Team then
         return true
     end
@@ -3144,13 +3149,32 @@ local function getSilentTargetPosition()
     return targetPos, targetPart
 end
 
-local function redirectCameraDataValue(camData, targetPos, camPos)
+local function redirectCameraDataValue(camData, targetPos, camPos, targetPart)
     if typeof(camData) == "CFrame" then
         return CFrame.lookAt(camData.Position, targetPos)
     elseif typeof(camData) == "Vector3" then
         return (targetPos - (camPos or Camera.CFrame.Position)).Unit
     elseif type(camData) == "table" then
+        local k0, k1, k2, k3 = utf8.char(0), utf8.char(1), utf8.char(2), utf8.char(3)
         local cloned = {}
+        for k, v in pairs(camData) do
+            cloned[k] = v
+        end
+        -- RIVALS exact ClientFighter:GetCameraData() packet: \0=OriginCF, \1=AimCF, \2=HitPart, \3=HitOffsetCF
+        if camData[k0] ~= nil or camData[k1] ~= nil then
+            if typeof(camData[k0]) == "CFrame" then
+                cloned[k0] = CFrame.lookAt(camData[k0].Position, targetPos)
+            end
+            if typeof(camData[k1]) == "CFrame" then
+                cloned[k1] = CFrame.lookAt(camData[k1].Position, targetPos)
+            end
+            if targetPart then
+                cloned[k2] = targetPart
+                cloned[k3] = targetPart.CFrame:ToObjectSpace(CFrame.new(targetPos))
+            end
+            return cloned
+        end
+        -- Generic table fallback
         for k, v in pairs(camData) do
             if typeof(v) == "CFrame" then
                 cloned[k] = CFrame.lookAt(v.Position, targetPos)
@@ -3162,11 +3186,7 @@ local function redirectCameraDataValue(camData, targetPos, camPos)
                     cloned[k] = targetPos
                 elseif type(k) == "number" and k >= 2 and math.abs(v.Magnitude - 1) < 0.05 then
                     cloned[k] = (targetPos - (camPos or Camera.CFrame.Position)).Unit
-                else
-                    cloned[k] = v
                 end
-            else
-                cloned[k] = v
             end
         end
         return cloned
@@ -3367,66 +3387,46 @@ pcall(function()
     end
 end)
 
--- 4. RIVALS Native Gun / ClientFighter CameraData Hook (Zero impact on other games)
+-- 4. RIVALS Native Gun / FighterController.LocalFighter CameraData Hook (Zero impact on other games)
 task.spawn(function()
-    pcall(function()
-        if _G.VodkaRivalsHooked then return end
-        local ps = LocalPlayer:FindFirstChild("PlayerScripts")
-        local mods = ps and ps:FindFirstChild("Modules")
-        if not mods then return end
+    if _G.VodkaRivalsHooked then return end
+    local ps = LocalPlayer:FindFirstChild("PlayerScripts")
+    local mods = ps and ps:FindFirstChild("Modules")
+    local ctrls = ps and ps:FindFirstChild("Controllers")
+    local fcMod = ctrls and ctrls:FindFirstChild("FighterController")
+    local itemTypes = mods and mods:FindFirstChild("ItemTypes")
+    local gunMod = itemTypes and itemTypes:FindFirstChild("Gun")
+    local meleeMod = itemTypes and itemTypes:FindFirstChild("Melee")
+    if not gunMod or not fcMod then return end
 
-        local itemTypes = mods:FindFirstChild("ItemTypes")
-        local gunMod = itemTypes and itemTypes:FindFirstChild("Gun")
-        local meleeMod = itemTypes and itemTypes:FindFirstChild("Melee")
-        local crc = mods:FindFirstChild("ClientReplicatedClasses")
-        local fighterMod = crc and crc:FindFirstChild("ClientFighter")
-        if not gunMod or not fighterMod then return end
+    local okReq, Gun, FighterController = pcall(function()
+        return require(gunMod), require(fcMod)
+    end)
+    if not okReq or type(Gun) ~= "table" or type(FighterController) ~= "table" then return end
 
-        local Gun = require(gunMod)
-        local ClientFighter = require(fighterMod)
-        if type(Gun) ~= "table" or type(ClientFighter) ~= "table" then return end
-        _G.VodkaRivalsHooked = true
-
-        if type(ClientFighter.GetCameraData) == "function" then
-            local oldGetCamData = ClientFighter.GetCameraData
-            ClientFighter.GetCameraData = function(self, ...)
-                local d = _G.VodkaHookDispatch
-                if d and d.Enabled and d.InRivalsShoot and not d.InHook and d.IsSilentActive() then
-                    local cam = Workspace.CurrentCamera
-                    local res = table.pack(oldGetCamData(self, ...))
-                    if res.n >= 1 and res[1] ~= nil then
-                        d.InHook = true
-                        local ok, targetPos = pcall(d.GetTargetPos)
-                        d.InHook = false
-                        if ok and targetPos then
-                            res[1] = d.RedirectCameraData(res[1], targetPos, cam and cam.CFrame.Position)
-                        end
-                    end
-                    return table.unpack(res, 1, res.n)
+    -- Hook Gun & Melee StartShooting immediately
+    if type(Gun.StartShooting) == "function" and not _G.VodkaRivalsGunHooked then
+        _G.VodkaRivalsGunHooked = true
+        local oldStartShooting = Gun.StartShooting
+        Gun.StartShooting = function(self, ...)
+            local d = _G.VodkaHookDispatch
+            if d and d.Enabled and d.IsSilentActive() then
+                d.InRivalsShoot = true
+                local res = table.pack(pcall(oldStartShooting, self, ...))
+                d.InRivalsShoot = false
+                if res[1] then
+                    return table.unpack(res, 2, res.n)
                 end
-                return oldGetCamData(self, ...)
             end
+            return oldStartShooting(self, ...)
         end
+    end
 
-        if type(Gun.StartShooting) == "function" then
-            local oldStartShooting = Gun.StartShooting
-            Gun.StartShooting = function(self, ...)
-                local d = _G.VodkaHookDispatch
-                if d and d.Enabled and d.IsSilentActive() then
-                    d.InRivalsShoot = true
-                    local res = table.pack(pcall(oldStartShooting, self, ...))
-                    d.InRivalsShoot = false
-                    if res[1] then
-                        return table.unpack(res, 2, res.n)
-                    end
-                end
-                return oldStartShooting(self, ...)
-            end
-        end
-
-        if meleeMod then
+    if meleeMod and not _G.VodkaRivalsMeleeHooked then
+        pcall(function()
             local Melee = require(meleeMod)
             if type(Melee) == "table" and type(Melee.StartShooting) == "function" then
+                _G.VodkaRivalsMeleeHooked = true
                 local oldMeleeShoot = Melee.StartShooting
                 Melee.StartShooting = function(self, ...)
                     local d = _G.VodkaHookDispatch
@@ -3441,8 +3441,47 @@ task.spawn(function()
                     return oldMeleeShoot(self, ...)
                 end
             end
-        end
-    end)
+        end)
+    end
+
+    -- Wait cleanly up to 30s for FighterController.LocalFighter (in case loaded in lobby before match)
+    local lf = FighterController.LocalFighter
+    local tries = 0
+    while not lf and tries < 60 do
+        local d = _G.VodkaHookDispatch
+        if d and not d.Enabled then return end
+        task.wait(0.5)
+        tries = tries + 1
+        lf = FighterController.LocalFighter
+    end
+
+    if lf then
+        pcall(function()
+            local mt = getmetatable(lf)
+            local cfProto = mt and type(mt.__index) == "table" and mt.__index or nil
+            if cfProto and type(cfProto.GetCameraData) == "function" and not _G.VodkaRivalsHooked then
+                _G.VodkaRivalsHooked = true
+                local oldGetCamData = cfProto.GetCameraData
+                cfProto.GetCameraData = function(self, ...)
+                    local d = _G.VodkaHookDispatch
+                    if d and d.Enabled and d.InRivalsShoot and not d.InHook and d.IsSilentActive() then
+                        local cam = Workspace.CurrentCamera
+                        local res = table.pack(oldGetCamData(self, ...))
+                        if res.n >= 1 and res[1] ~= nil then
+                            d.InHook = true
+                            local ok, targetPos, targetPart = pcall(d.GetTargetPos)
+                            d.InHook = false
+                            if ok and targetPos then
+                                res[1] = d.RedirectCameraData(res[1], targetPos, cam and cam.CFrame.Position, targetPart)
+                            end
+                        end
+                        return table.unpack(res, 1, res.n)
+                    end
+                    return oldGetCamData(self, ...)
+                end
+            end
+        end)
+    end
 end)
 
 ---------------------------------------------------------------------
@@ -3918,7 +3957,7 @@ RunService.RenderStepped:Connect(function()
                                 width = height * 0.6
                             end
 
-                            local isVis = checkWallVisibility(char, head)
+                            local isVis = S.ESP.VisibleCheck and checkWallVisibility(char, head) or true
 
                             -- Determine box and accent color
                             local boxColor = S.BoxESP.Color or Color3.fromRGB(255, 255, 255)
