@@ -3160,6 +3160,8 @@ local function redirectCameraDataValue(camData, targetPos, camPos)
                     cloned[k] = (targetPos - (camPos or Camera.CFrame.Position)).Unit
                 elseif kl:find("hit") or kl:find("target") or kl:find("end") then
                     cloned[k] = targetPos
+                elseif type(k) == "number" and k >= 2 and math.abs(v.Magnitude - 1) < 0.05 then
+                    cloned[k] = (targetPos - (camPos or Camera.CFrame.Position)).Unit
                 else
                     cloned[k] = v
                 end
@@ -3207,12 +3209,13 @@ pcall(function()
     local fnVPRay = rawFuncs.ViewportPointToRay
     local fnSPRay = rawFuncs.ScreenPointToRay
 
-    -- 1. Direct dot-syntax hook on Workspace.Raycast
+    -- 1. Direct dot-syntax hook on Workspace.Raycast (MUST capture return trampoline to avoid infinite recursion!)
     if hookfunction and fnRaycast then
-        hookfunction(Workspace.Raycast, newcclosure(function(self, origin, direction, rayParams)
+        local origRaycast
+        origRaycast = hookfunction(Workspace.Raycast, newcclosure(function(self, origin, direction, rayParams)
             local d = _G.VodkaHookDispatch
             if not d or not d.Enabled or d.InHook or checkcaller() or self ~= Workspace or not d.IsSilentActive() then
-                return fnRaycast(self, origin, direction, rayParams)
+                return origRaycast(self, origin, direction, rayParams)
             end
             if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" and direction.Magnitude >= 15 and d.IsWeaponOrigin(origin) then
                 d.InHook = true
@@ -3221,19 +3224,23 @@ pcall(function()
                 if ok and targetPos then
                     local mag = direction.Magnitude
                     if mag < 1 then mag = 1000 end
-                    return fnRaycast(self, origin, (targetPos - origin).Unit * mag, rayParams)
+                    return origRaycast(self, origin, (targetPos - origin).Unit * mag, rayParams)
                 end
             end
-            return fnRaycast(self, origin, direction, rayParams)
+            return origRaycast(self, origin, direction, rayParams)
         end))
+        fnRaycast = origRaycast
+        rawFuncs.Raycast = origRaycast
+        rawRaycast = origRaycast
     end
 
-    -- 2. Direct hooks on Camera ViewportPointToRay / ScreenPointToRay (Unit Ray)
+    -- 2. Direct hooks on Camera ViewportPointToRay / ScreenPointToRay (capture return trampolines!)
     if hookfunction and fnVPRay and Camera then
-        hookfunction(Camera.ViewportPointToRay, newcclosure(function(self, x, y, depth)
+        local origVPRay
+        origVPRay = hookfunction(Camera.ViewportPointToRay, newcclosure(function(self, x, y, depth)
             local d = _G.VodkaHookDispatch
             if not d or not d.Enabled or d.InHook or checkcaller() or not d.IsSilentActive() then
-                return fnVPRay(self, x, y, depth)
+                return origVPRay(self, x, y, depth)
             end
             d.InHook = true
             local ok, targetPos = pcall(d.GetTargetPos)
@@ -3242,15 +3249,18 @@ pcall(function()
                 local origin = Workspace.CurrentCamera.CFrame.Position
                 return Ray.new(origin, (targetPos - origin).Unit)
             end
-            return fnVPRay(self, x, y, depth)
+            return origVPRay(self, x, y, depth)
         end))
+        fnVPRay = origVPRay
+        rawFuncs.ViewportPointToRay = origVPRay
     end
 
     if hookfunction and fnSPRay and Camera then
-        hookfunction(Camera.ScreenPointToRay, newcclosure(function(self, x, y, depth)
+        local origSPRay
+        origSPRay = hookfunction(Camera.ScreenPointToRay, newcclosure(function(self, x, y, depth)
             local d = _G.VodkaHookDispatch
             if not d or not d.Enabled or d.InHook or checkcaller() or not d.IsSilentActive() then
-                return fnSPRay(self, x, y, depth)
+                return origSPRay(self, x, y, depth)
             end
             d.InHook = true
             local ok, targetPos = pcall(d.GetTargetPos)
@@ -3259,15 +3269,17 @@ pcall(function()
                 local origin = Workspace.CurrentCamera.CFrame.Position
                 return Ray.new(origin, (targetPos - origin).Unit)
             end
-            return fnSPRay(self, x, y, depth)
+            return origSPRay(self, x, y, depth)
         end))
+        fnSPRay = origSPRay
+        rawFuncs.ScreenPointToRay = origSPRay
     end
 
-    -- 3. Fast-path __namecall hook (Catches Workspace:Raycast colon calls without touching FireServer or clobbering namecallmethod)
+    -- 3. Ultra-fast __namecall hook: bail out in 2 pointer checks for everything except Workspace & CurrentCamera
     if hookmetamethod then
         local oldNamecall
         oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-            if checkcaller() then
+            if (self ~= Workspace and self ~= Workspace.CurrentCamera) or checkcaller() then
                 return oldNamecall(self, ...)
             end
             local d = _G.VodkaHookDispatch
